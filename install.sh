@@ -18,7 +18,7 @@ set -euo pipefail
 main() {
 
 # ----------------------------------------------------------------------------------------- settings
-REF="${CJF_REF:-v0.5.0}"
+REF="${CJF_REF:-v0.5.1}"
 MAIN_REPO="githubhjs/cangjie-fluency"
 GRAM_NAME="zh-hant-t-essay-bgw.gram"
 GRAM_SIZE=41415724
@@ -58,7 +58,7 @@ Usage: install.sh [options]
                                       also accepted: fcitx5-flatpak (path unverified)
   --rime-dir DIR                      Rime user directory (also env RIME_DIR); skips the front-end paths
   --ref TAG                           tag/branch of github.com/githubhjs/cangjie-fluency to download
-                                      missing files from (default: v0.5.0, env CJF_REF)
+                                      missing files from (default: v0.5.1, env CJF_REF)
   --offline                           never touch the network: every file must be next to this script
                                       (full release zip layout), otherwise the install stops
   --no-deps                           do not install ibus-rime / fcitx5-rime / librime-plugin-octagram
@@ -85,7 +85,7 @@ EOF
                                       也接受 fcitx5-flatpak（路徑未驗證）
   --rime-dir DIR                      Rime 使用者資料夾（也可用環境變數 RIME_DIR）；會略過框架的預設路徑
   --ref TAG                           從 github.com/githubhjs/cangjie-fluency 下載缺少檔案時使用的
-                                      標籤/分支（預設：v0.5.0，環境變數 CJF_REF）
+                                      標籤/分支（預設：v0.5.1，環境變數 CJF_REF）
   --offline                           完全不連網：所有檔案都必須放在本腳本旁邊
                                       （完整 release zip 的版面配置），否則安裝會中止
   --no-deps                           不用系統套件管理員安裝 ibus-rime / fcitx5-rime / librime-plugin-octagram
@@ -634,7 +634,11 @@ deploy
 if [ "$DRY" -eq 1 ]; then
   say "dry run finished; nothing was changed." "試跑結束；沒有更動任何東西。"
 else
-  say "Done. Switch to the schema with Ctrl+\` (or F4) and pick 'cangjie3_fluency'." "完成。按 Ctrl+\`（或 F4）切換方案，選「cangjie3_fluency」。"
+  if [ "$FUZZY_DEFAULT" -eq 1 ] && [ "$NO_FUZZY" -eq 0 ]; then
+    say "Done. The default schema is 'cangjie3_fuzzy' (adjacent-key typo tolerance): no Ctrl+\` / F4 needed. Plain 'cangjie3_fluency' is listed right after it." "完成。預設方案就是「cangjie3_fuzzy」（鄰鍵容錯），不必按 Ctrl+\` 或 F4；一般的「cangjie3_fluency」排在它後面。"
+  else
+    say "Done. Switch to the schema with Ctrl+\` (or F4) and pick 'cangjie3_fluency'." "完成。按 Ctrl+\`（或 F4）切換方案，選「cangjie3_fluency」。"
+  fi
   say "Check the language model: grep -h 'use grammar\\|failed to load grammar' in the Rime log (see README): want a 'use grammar: $GRAM_NAME' line and NO 'failed to load grammar' line (glog buffers: it can appear late)." "檢查語言模型：在 Rime 記錄檔裡 grep -h 'use grammar\\|failed to load grammar'（見 README）：要看到「use grammar: $GRAM_NAME」那一行，且沒有「failed to load grammar」那一行（glog 有緩衝：可能較晚才出現）。"
   [ "$WARNINGS" -eq 0 ] || say "finished with $WARNINGS warning(s), see above." "完成，但有 $WARNINGS 個警告，請看上方訊息。"
 fi

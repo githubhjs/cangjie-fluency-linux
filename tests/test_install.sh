@@ -138,6 +138,7 @@ check "--fuzzy-default fresh: fuzzy first" test "$(grep -- '- schema:' "$d/defau
 printf 'patch:\n  schema_list:\n    - schema: cangjie3_fluency\n    - schema: luna_pinyin\n' >"$T/dc_in"
 d="$(dc_case fzdef)"; run "$d" --fuzzy-default
 check "--fuzzy-default existing list: fuzzy inserted at the top" test "$(grep -- '- schema:' "$d/default.custom.yaml" | tr -d ' \n')" = "-schema:cangjie3_fuzzy-schema:cangjie3_fluency-schema:luna_pinyin"
+check "--fuzzy-default: the closing message names cangjie3_fuzzy as the default" has "The default schema is 'cangjie3_fuzzy'"
 printf 'patch:\n  schema_list:\n    - schema: cangjie3_fluency\n    - schema: luna_pinyin\n' >"$T/dc_in"
 d="$(dc_case fzdefault_fluency)"; run "$d"
 check "default existing list: fuzzy right after fluency, fluency stays default" test "$(grep -- '- schema:' "$d/default.custom.yaml" | tr -d ' \n')" = "-schema:cangjie3_fluency-schema:cangjie3_fuzzy-schema:luna_pinyin"

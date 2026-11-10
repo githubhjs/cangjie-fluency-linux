@@ -64,7 +64,7 @@ missing. A `slim` zip (installer + schema files + converter, about 29 KB) also e
 2. 以發行版的套件管理員、透過 `sudo` 安裝缺少的引擎套件（Debian/Ubuntu：`ibus-rime` 或 `fcitx5-rime`，
    另加供語言模型使用的 `librime-plugin-octagram`）。可用 `--no-deps` 跳過。
 3. 所有檔案優先取自 `install.sh` 旁邊的資料夾（完整 zip 的結構為 `weasel/ tables/ data/ tools/`），否則取自
-   `raw.githubusercontent.com/githubhjs/cangjie-fluency/<ref>/`（預設 `v0.5.0`）。碼表、詞表與語言模型都會以
+   `raw.githubusercontent.com/githubhjs/cangjie-fluency/<ref>/`（預設 `v0.5.1`）。碼表、詞表與語言模型都會以
    腳本中固定的雜湊值做 **SHA-256 核對**。
 4. 在你的電腦上用 `tools/cin2rime.py` 把 `tables/mscj3.cin` 轉成 `cangjie3.base.dict.yaml`，詞頻權重一律使用
    倉庫的 `data/essay.txt`，因此各平台的結果逐位元組相同。
@@ -79,7 +79,7 @@ missing. A `slim` zip (installer + schema files + converter, about 29 KB) also e
 | `--rime-dir DIR`（或環境變數 `RIME_DIR`） | 安裝到 `DIR`，供測試或特殊環境使用；除非同時指定 `--frontend`，否則不會重新啟動任何程式 |
 | `--offline` | 完全不碰網路；每個檔案都必須在 `install.sh` 旁邊（請使用完整 zip） |
 | `--no-deps` | 不用套件管理員安裝引擎套件 |
-| `--ref TAG` | 從主倉庫的哪個標籤／分支下載缺少的檔案（預設 `v0.5.0`） |
+| `--ref TAG` | 從主倉庫的哪個標籤／分支下載缺少的檔案（預設 `v0.5.1`） |
 | `--with-cangjie5` | 一併安裝 `cangjie5_fluency`（以及主倉庫 `tables/` 中的五代碼表） |
 | `--no-model` | 跳過 41 MB 的語言模型 |
 | `--no-deploy` | 只複製檔案 |
@@ -114,7 +114,7 @@ What it does, in order:
 2. Installs the engine packages that are missing with the distribution's package manager, using `sudo`
    (Debian/Ubuntu: `ibus-rime` or `fcitx5-rime`, plus `librime-plugin-octagram` for the language model). Skip with `--no-deps`.
 3. Takes every file from the folder next to `install.sh` (full-zip layout `weasel/ tables/ data/ tools/`), otherwise from
-   `raw.githubusercontent.com/githubhjs/cangjie-fluency/<ref>/` (default `v0.5.0`). Tables, word list and language model are
+   `raw.githubusercontent.com/githubhjs/cangjie-fluency/<ref>/` (default `v0.5.1`). Tables, word list and language model are
    **SHA-256 checked** against hashes pinned in the script.
 4. Converts `tables/mscj3.cin` on your machine into `cangjie3.base.dict.yaml` with `tools/cin2rime.py`, always using the
    repository's `data/essay.txt` for the frequency weights, so the result is byte-identical on every platform.
@@ -129,7 +129,7 @@ Options:
 | `--rime-dir DIR` (or env `RIME_DIR`) | install into `DIR`, for testing or unusual setups; nothing is restarted unless you also give `--frontend` |
 | `--offline` | never touch the network; every file must be next to `install.sh` (use the full zip) |
 | `--no-deps` | do not install engine packages with the package manager |
-| `--ref TAG` | which tag/branch of the main repo to download missing files from (default `v0.5.0`) |
+| `--ref TAG` | which tag/branch of the main repo to download missing files from (default `v0.5.1`) |
 | `--with-cangjie5` | also install `cangjie5_fluency` (+ the 5th-generation table from the main repo's `tables/`) |
 | `--no-model` | skip the 41 MB language model |
 | `--no-deploy` | copy files only |
@@ -321,7 +321,7 @@ edited your existing `default.custom.yaml`, delete the `- schema: cangjie3_fluen
 ```sh
 bash tests/test_install.sh          # offline, stubbed front end/curl/sudo, real tables + model, 84 checks
 bash tests/compile_test.sh [DIR]    # real librime build of the schema with the repo's own table/essay/model
-./make-release.sh ~/projects/cangjie-fluency v0.5.0   # dist/*-full.zip and *-slim.zip (needs the main repo checkout)
+./make-release.sh ~/projects/cangjie-fluency v0.5.1   # dist/*-full.zip and *-slim.zip (needs the main repo checkout)
 ```
 
 ## Credits and licensing / 來源與授權
@@ -399,7 +399,7 @@ bash install.sh
 
 腳本會：偵測前端（沒有任何前端時依桌面環境選 ibus 或 fcitx5）→ 用系統套件管理員（`sudo`）補裝缺少的引擎套件與
 `librime-plugin-octagram`（`--no-deps` 可跳過）→ 檔案優先取腳本旁邊（完整包的 `weasel/ tables/ data/ tools/` 結構），否則從主倉庫
-`raw.githubusercontent.com/githubhjs/cangjie-fluency/<版本>/`（預設 `v0.5.0`）下載；碼表、詞彙表、語言模型都會核對 **SHA-256** →
+`raw.githubusercontent.com/githubhjs/cangjie-fluency/<版本>/`（預設 `v0.5.1`）下載；碼表、詞彙表、語言模型都會核對 **SHA-256** →
 在你的電腦上把 `tables/mscj3.cin` 轉成 `cangjie3.base.dict.yaml`（一律用主倉庫的 `data/essay.txt` 當權重，各平台輸出逐位元組相同）→
 安裝完整語言模型 → 把 `cangjie3_fluency` 放進 `default.custom.yaml` 方案清單的**第一個** → 重新部署。
 

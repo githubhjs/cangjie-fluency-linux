@@ -1,0 +1,13 @@
+# PIME's mscj3.cin has no licence header: never commit it or anything generated from it
+mscj3.cin
+*.cin
+cangjie3.base.dict.yaml
+# language models (41 MB, downloaded at install time)
+*.gram
+# installer backups
+*.bak-*
+*.cjf-part
+# test dirs and scratch output
+testenv/
+tests/tmp/
+.cangjie-fluency-linux.manifest

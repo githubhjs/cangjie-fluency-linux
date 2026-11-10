@@ -15,7 +15,7 @@ STAGE="$(mktemp -d "${TMPDIR:-/tmp}/cjf-rel.XXXXXX")"; trap 'rm -rf "$STAGE"' EX
 
 need() { [ -f "$MAIN/$1" ] || { echo "missing in main repo checkout: $1" >&2; exit 1; }; }
 for f in weasel/cangjie3_fluency.schema.yaml weasel/cangjie3_fluency.dict.yaml weasel/cangjie5_fluency.schema.yaml \
-         weasel/cangjie5_fluency.dict.yaml tools/cin2rime.py tables/mscj3.cin tables/cangjie5.base.dict.yaml tables/SHA256SUMS \
+         weasel/cangjie5_fluency.dict.yaml weasel/cangjie3_fuzzy.schema.yaml weasel/cangjie3_fuzzy_prism.schema.yaml weasel/cangjie5_fuzzy.schema.yaml weasel/cangjie5_fuzzy_prism.schema.yaml weasel/fuzzy-narrow/cangjie3_fuzzy.schema.yaml weasel/fuzzy-narrow/cangjie3_fuzzy_prism.schema.yaml weasel/fuzzy-narrow/cangjie5_fuzzy.schema.yaml weasel/fuzzy-narrow/cangjie5_fuzzy_prism.schema.yaml weasel/fuzzy-wide/cangjie3_fuzzy.schema.yaml weasel/fuzzy-wide/cangjie3_fuzzy_prism.schema.yaml weasel/fuzzy-wide/cangjie5_fuzzy.schema.yaml weasel/fuzzy-wide/cangjie5_fuzzy_prism.schema.yaml tools/cin2rime.py tables/mscj3.cin tables/cangjie5.base.dict.yaml tables/SHA256SUMS \
          tables/README.md data/essay.txt data/zh-hant-t-essay-bgw.gram data/SHA256SUMS data/README.md; do need "$f"; done
 
 # the hashes pinned in install.sh must match the files being shipped
@@ -32,7 +32,9 @@ build() { # build full|slim
   mkdir -p "$d/weasel" "$d/tools"
   cp "$HERE/install.sh" "$HERE/README.md" "$HERE/LICENSE" "$d/"
   chmod +x "$d/install.sh"
-  for f in cangjie3_fluency.schema.yaml cangjie3_fluency.dict.yaml cangjie5_fluency.schema.yaml cangjie5_fluency.dict.yaml; do cp "$MAIN/weasel/$f" "$d/weasel/"; done
+  for f in cangjie3_fluency.schema.yaml cangjie3_fluency.dict.yaml cangjie5_fluency.schema.yaml cangjie5_fluency.dict.yaml \
+           cangjie3_fuzzy.schema.yaml cangjie3_fuzzy_prism.schema.yaml cangjie5_fuzzy.schema.yaml cangjie5_fuzzy_prism.schema.yaml; do cp "$MAIN/weasel/$f" "$d/weasel/"; done
+  for rg in narrow wide; do mkdir -p "$d/weasel/fuzzy-$rg"; for f in cangjie3_fuzzy.schema.yaml cangjie3_fuzzy_prism.schema.yaml cangjie5_fuzzy.schema.yaml cangjie5_fuzzy_prism.schema.yaml; do cp "$MAIN/weasel/fuzzy-$rg/$f" "$d/weasel/fuzzy-$rg/"; done; done
   cp "$MAIN/tools/cin2rime.py" "$d/tools/"
   if [ "$kind" = full ]; then
     mkdir -p "$d/tables" "$d/data"

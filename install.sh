@@ -18,7 +18,7 @@ set -euo pipefail
 main() {
 
 # ----------------------------------------------------------------------------------------- settings
-REF="${CJF_REF:-v0.4.0}"
+REF="${CJF_REF:-v0.5.0}"
 MAIN_REPO="githubhjs/cangjie-fluency"
 GRAM_NAME="zh-hant-t-essay-bgw.gram"
 GRAM_SIZE=41415724
@@ -32,6 +32,9 @@ TAG="[cangjie-fluency-linux]"
 FRONTEND="auto"
 RIME_DIR="${RIME_DIR:-}"
 WITH_CJ5=0
+NO_FUZZY=0
+FUZZY_RANGE=normal
+FUZZY_DEFAULT=0
 NO_MODEL=0
 NO_DEPLOY=0
 NO_DEPS=0
@@ -55,13 +58,17 @@ Usage: install.sh [options]
                                       also accepted: fcitx5-flatpak (path unverified)
   --rime-dir DIR                      Rime user directory (also env RIME_DIR); skips the front-end paths
   --ref TAG                           tag/branch of github.com/githubhjs/cangjie-fluency to download
-                                      missing files from (default: v0.4.0, env CJF_REF)
+                                      missing files from (default: v0.5.0, env CJF_REF)
   --offline                           never touch the network: every file must be next to this script
                                       (full release zip layout), otherwise the install stops
   --no-deps                           do not install ibus-rime / fcitx5-rime / librime-plugin-octagram
                                       with the system package manager
   --with-cangjie5                     also install cangjie5_fluency (5th generation)
   --no-model                          do not install the 41 MB language model (.gram)
+  --no-fuzzy                          do not install the adjacent-key typo tolerance schemas (cangjie3_fuzzy)
+  --fuzzy-default                     make the typo-tolerant schema the FIRST (default) one instead of cangjie3_fluency
+  --fuzzy-range narrow|normal|wide    how far a wrong key may be from the right one: narrow = left/right only,
+                                      normal (default) = also the diagonal neighbours, wide = one more ring
   --no-deploy                         copy files only, do not restart/redeploy the input method
   --dry-run                           say what would be done, change nothing, download nothing
   --uninstall                         remove the files this installer created (backups are kept)
@@ -78,12 +85,16 @@ EOF
                                       也接受 fcitx5-flatpak（路徑未驗證）
   --rime-dir DIR                      Rime 使用者資料夾（也可用環境變數 RIME_DIR）；會略過框架的預設路徑
   --ref TAG                           從 github.com/githubhjs/cangjie-fluency 下載缺少檔案時使用的
-                                      標籤/分支（預設：v0.4.0，環境變數 CJF_REF）
+                                      標籤/分支（預設：v0.5.0，環境變數 CJF_REF）
   --offline                           完全不連網：所有檔案都必須放在本腳本旁邊
                                       （完整 release zip 的版面配置），否則安裝會中止
   --no-deps                           不用系統套件管理員安裝 ibus-rime / fcitx5-rime / librime-plugin-octagram
   --with-cangjie5                     同時安裝 cangjie5_fluency（五代）
   --no-model                          不安裝 41 MB 的語言模型（.gram）
+  --no-fuzzy                          不安裝相鄰鍵容錯方案（cangjie3_fuzzy）
+  --fuzzy-default                     把鄰鍵容錯方案排在第一個（預設），而不是 cangjie3_fluency
+  --fuzzy-range narrow|normal|wide    打錯的鍵離正確的鍵多遠算數：narrow = 只有左右相鄰，
+                                      normal（預設）= 再加斜向相鄰，wide = 再多一圈
   --no-deploy                         只複製檔案，不重新啟動/重新部署輸入法
   --dry-run                           只說明會做什麼，不更動、不下載
   --uninstall                         移除本安裝程式建立的檔案（備份檔會保留）
@@ -107,6 +118,9 @@ while [ $# -gt 0 ]; do
     --no-deps)        NO_DEPS=1; shift ;;
     --with-cangjie5)  WITH_CJ5=1; shift ;;
     --no-model)       NO_MODEL=1; shift ;;
+    --no-fuzzy)       NO_FUZZY=1; shift ;;
+    --fuzzy-default)  FUZZY_DEFAULT=1; shift ;;
+    --fuzzy-range)    FUZZY_RANGE="${2:-}"; case "$FUZZY_RANGE" in narrow|normal|wide) ;; *) die "--fuzzy-range must be narrow, normal or wide" "--fuzzy-range 只能是 narrow、normal 或 wide" ;; esac; shift 2 ;;
     --no-deploy)      NO_DEPLOY=1; shift ;;
     --dry-run)        DRY=1; shift ;;
     --uninstall)      UNINSTALL=1; shift ;;
@@ -401,8 +415,11 @@ if [ "$DRY" -eq 1 ]; then
   [ "$NO_MODEL" -eq 1 ] || say "DRY: would install $GRAM_NAME ($GRAM_SIZE bytes, SHA-256 checked) unless already present" "試跑：將會安裝 $GRAM_NAME（$GRAM_SIZE 位元組，已檢查 SHA-256），若已存在則略過"
 else
   # --- schema + dict (single source of truth: the main repo)
-  for f in cangjie3_fluency.schema.yaml cangjie3_fluency.dict.yaml; do
-    get_src "weasel/$f" "$WORK/$f"
+  FILES3="cangjie3_fluency.schema.yaml cangjie3_fluency.dict.yaml"
+  [ "$NO_FUZZY" -eq 1 ] || FILES3="$FILES3 cangjie3_fuzzy.schema.yaml cangjie3_fuzzy_prism.schema.yaml"
+  for f in $FILES3; do
+    rel="weasel/$f"; case "$f" in *_fuzzy*) [ "$FUZZY_RANGE" = normal ] || rel="weasel/fuzzy-$FUZZY_RANGE/$f" ;; esac
+    get_src "$rel" "$WORK/$f"
     place_file "$WORK/$f" "$f"
   done
   get_src "tools/cin2rime.py" "$WORK/cin2rime.py"
@@ -429,8 +446,11 @@ else
 
   # --- optional 5th generation
   if [ "$WITH_CJ5" -eq 1 ]; then
-    for f in cangjie5_fluency.schema.yaml cangjie5_fluency.dict.yaml; do
-      get_src "weasel/$f" "$WORK/$f"
+    FILES5="cangjie5_fluency.schema.yaml cangjie5_fluency.dict.yaml"
+    [ "$NO_FUZZY" -eq 1 ] || FILES5="$FILES5 cangjie5_fuzzy.schema.yaml cangjie5_fuzzy_prism.schema.yaml"
+    for f in $FILES5; do
+      rel="weasel/$f"; case "$f" in *_fuzzy*) [ "$FUZZY_RANGE" = normal ] || rel="weasel/fuzzy-$FUZZY_RANGE/$f" ;; esac
+      get_src "$rel" "$WORK/$f"
       place_file "$WORK/$f" "$f"
     done
     get_src "tables/cangjie5.base.dict.yaml" "$WORK/cangjie5.base.dict.yaml" "$CJ5_BASE_SHA"
@@ -453,8 +473,14 @@ else
 fi
 
 # ----------------------------------------------------------------------------------------- default.custom.yaml
-IDS="cangjie3_fluency"
-[ "$WITH_CJ5" -eq 0 ] || IDS="$IDS cangjie5_fluency"
+IDS=""
+if [ "$FUZZY_DEFAULT" -eq 1 ] && [ "$NO_FUZZY" -eq 0 ]; then
+  IDS="cangjie3_fuzzy"; [ "$WITH_CJ5" -eq 0 ] || IDS="$IDS cangjie5_fuzzy"
+  IDS="$IDS cangjie3_fluency"; [ "$WITH_CJ5" -eq 0 ] || IDS="$IDS cangjie5_fluency"
+else
+  IDS="cangjie3_fluency"; [ "$NO_FUZZY" -eq 1 ] || IDS="$IDS cangjie3_fuzzy"
+  [ "$WITH_CJ5" -eq 0 ] || { IDS="$IDS cangjie5_fluency"; [ "$NO_FUZZY" -eq 1 ] || IDS="$IDS cangjie5_fuzzy"; }
+fi
 DC="$RIME_DIR/default.custom.yaml"
 
 fresh_default_custom() {
@@ -469,7 +495,7 @@ fresh_default_custom() {
 # merge_schema_list FILE OUT IDS...  exit 0 = OUT written with changes, 10 = nothing to add, 11 = no usable schema_list
 merge_schema_list() {
   python3 -I - "$@" <<'PY'
-import re, sys
+import os, re, sys
 path, out, ids = sys.argv[1], sys.argv[2], sys.argv[3:]
 data = open(path, "rb").read()
 crlf = b"\r\n" in data
@@ -506,12 +532,17 @@ while i < len(lines):
 missing = [x for x in ids if x not in listed]
 if not missing:
     sys.exit(10)
+# typo-tolerant ids go right after their base schema (never becoming the default) unless --fuzzy-default
+special = [x for x in missing if x.endswith("_fuzzy") and os.environ.get("CJF_FUZZY_DEFAULT") != "1"]
+missing = [x for x in missing if x not in special]
 prefix, brace = style if style else (b" " * (base_indent + 2) + b"- ", False)
 new = []
 for x in missing:
     body = (b"{schema: " + x.encode() + b"}") if brace else (b"schema: " + x.encode())
     new.append(prefix + body)
-if first is not None:
+if not new:
+    pass
+elif first is not None:
     pos = first
     ins = [n + (b"\r" if crlf else b"") for n in new]
     lines[pos:pos] = ins
@@ -523,6 +554,17 @@ else:
         lines.extend([n + cr for n in new[:-1]] + [new[-1]])
     else:
         lines[pos:pos] = [n + cr for n in new]
+cr = b"\r" if crlf else b""
+for x in special:
+    base = x.replace("_fuzzy", "_fluency")
+    at = None
+    for j, l in enumerate(lines):
+        m = item.match(l.rstrip(b"\r"))
+        if m and m.group(3).decode() == base:
+            at = j
+            break
+    body = (b"{schema: " + x.encode() + b"}") if brace else (b"schema: " + x.encode())
+    lines.insert((at + 1) if at is not None else idx + 1, prefix + body + cr)
 open(out, "wb").write(b"\n".join(lines))
 PY
 }
@@ -538,7 +580,7 @@ dc_step() {
   local out rc=0
   out="$(mktemp "${TMPDIR:-/tmp}/cjf-dc.XXXXXX")"
   # shellcheck disable=SC2086
-  merge_schema_list "$DC" "$out" $IDS || rc=$?
+  CJF_FUZZY_DEFAULT="$FUZZY_DEFAULT" merge_schema_list "$DC" "$out" $IDS || rc=$?
   case "$rc" in
     10) say "default.custom.yaml already lists $IDS: left untouched" "default.custom.yaml 已列出 $IDS：不動它" ;;
     11)

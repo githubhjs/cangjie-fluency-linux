@@ -73,7 +73,7 @@ sum() { md5sum <"$1" | cut -d' ' -f1; }
 # existing list, LF
 printf '# my config\npatch:\n  schema_list:\n    - schema: luna_pinyin\n    - schema: cangjie5\n  menu/page_size: 7\n' >"$T/dc_in"
 d="$(dc_case lf)"; run "$d"
-want=$'# my config\npatch:\n  schema_list:\n    - schema: cangjie3_fluency\n    - schema: luna_pinyin\n    - schema: cangjie5\n  menu/page_size: 7\n'
+want=$'# my config\npatch:\n  schema_list:\n    - schema: cangjie3_fluency\n    - schema: cangjie3_fuzzy\n    - schema: luna_pinyin\n    - schema: cangjie5\n  menu/page_size: 7\n'
 check "merge LF: inserted first, rest untouched" test "$(cat "$d/default.custom.yaml"; echo x)" = "${want}x"
 check "merge LF: one backup of default.custom.yaml" test "$(find "$d" -maxdepth 1 -name "default.custom.yaml.bak-*" | wc -l | tr -d " ")" = 1
 check "merge LF: backup is the original" cmp -s "$T/dc_in" "$d"/default.custom.yaml.bak-*
@@ -84,7 +84,7 @@ check "merge LF: second run no extra backup" test "$(find "$d" -maxdepth 1 -name
 # existing list, CRLF, no trailing newline (what Weasel-style editors produce)
 printf 'patch:\r\n  schema_list:\r\n    - schema: luna_pinyin\r\n    - schema: cangjie5' >"$T/dc_in"
 d="$(dc_case crlf)"; run "$d"
-want=$'patch:\r\n  schema_list:\r\n    - schema: cangjie3_fluency\r\n    - schema: luna_pinyin\r\n    - schema: cangjie5'
+want=$'patch:\r\n  schema_list:\r\n    - schema: cangjie3_fluency\r\n    - schema: cangjie3_fuzzy\r\n    - schema: luna_pinyin\r\n    - schema: cangjie5'
 check "merge CRLF: CRLF kept, no trailing newline added" cmp -s <(printf '%s' "$want") "$d/default.custom.yaml"
 check "merge CRLF: no bare LF introduced" test "$(grep -c $'[^\r]$' "$d/default.custom.yaml")" = 1   # only the last line has no CR
 
@@ -93,7 +93,9 @@ printf 'patch:\n  schema_list:\n    - {schema: luna_pinyin}\n    - {schema: cang
 d="$(dc_case brace)"; run "$d"
 check "merge brace: brace style used" grep -qx '    - {schema: cangjie3_fluency}' "$d/default.custom.yaml"
 check "merge brace: it is the first entry" test "$(grep -m1 -- '- ' "$d/default.custom.yaml")" = "    - {schema: cangjie3_fluency}"
-check "merge brace: other entries unchanged" test "$(grep -c '{schema: ' "$d/default.custom.yaml")" = 3
+check "merge brace: other entries unchanged" test "$(grep -c '{schema: ' "$d/default.custom.yaml")" = 4
+
+check "merge brace: fuzzy is second, in brace style" test "$(grep -- '- ' "$d/default.custom.yaml" | sed -n 2p)" = "    - {schema: cangjie3_fuzzy}"
 
 # different indentation (4 spaces under patch, 6 for items)
 printf 'patch:\n    schema_list:\n          - schema: luna_pinyin\n' >"$T/dc_in"
@@ -108,7 +110,7 @@ check "no schema_list: no backup" test "$(find "$d" -maxdepth 1 -name "default.c
 check "no schema_list: tells what to add" has "- schema: cangjie3_fluency"
 
 # already listed
-printf 'patch:\n  schema_list:\n    - schema: luna_pinyin\n    - schema: cangjie3_fluency\n' >"$T/dc_in"
+printf 'patch:\n  schema_list:\n    - schema: luna_pinyin\n    - schema: cangjie3_fluency\n    - schema: cangjie3_fuzzy\n' >"$T/dc_in"
 d="$(dc_case listed)"; run "$d"
 check "already listed: file untouched" cmp -s "$T/dc_in" "$d/default.custom.yaml"
 check "already listed: no backup" test "$(find "$d" -maxdepth 1 -name "default.custom.yaml.bak-*" | wc -l | tr -d " ")" = 0
@@ -116,15 +118,44 @@ check "already listed: no backup" test "$(find "$d" -maxdepth 1 -name "default.c
 # only cangjie5_fluency listed: exact-id match, so cangjie3_fluency must still be added
 printf 'patch:\n  schema_list:\n    - schema: cangjie5_fluency\n' >"$T/dc_in"
 d="$(dc_case only5)"; run "$d"
-want=$'patch:\n  schema_list:\n    - schema: cangjie3_fluency\n    - schema: cangjie5_fluency\n'
+want=$'patch:\n  schema_list:\n    - schema: cangjie3_fluency\n    - schema: cangjie3_fuzzy\n    - schema: cangjie5_fluency\n'
 check "only cangjie5_fluency listed: cangjie3_fluency added first" test "$(cat "$d/default.custom.yaml"; echo x)" = "${want}x"
 
 # missing file is created (already covered by fresh install) - also with --with-cangjie5
 d="$T/c5"; run "$d" --with-cangjie5 --no-model
 check "with-cangjie5: files installed" test -f "$d/cangjie5_fluency.schema.yaml" -a -f "$d/cangjie5.base.dict.yaml"
 check "with-cangjie5: both listed, cangjie3 first" \
-  test "$(grep -- '- schema:' "$d/default.custom.yaml" | head -2 | tr -d ' \n')" = "-schema:cangjie3_fluency-schema:cangjie5_fluency"
+  test "$(grep -- '- schema:' "$d/default.custom.yaml" | head -4 | tr -d ' \n')" = "-schema:cangjie3_fluency-schema:cangjie3_fuzzy-schema:cangjie5_fluency-schema:cangjie5_fuzzy"
 check "no-model: gram not installed" test ! -e "$d/zh-hant-t-essay-bgw.gram"
+
+# ================================================================== fuzzy: files, order, options
+d="$T/fz1"; run "$d" --no-model --with-cangjie5
+for f in cangjie3_fuzzy.schema.yaml cangjie3_fuzzy_prism.schema.yaml cangjie5_fuzzy.schema.yaml cangjie5_fuzzy_prism.schema.yaml; do
+  check "fuzzy: $f installed byte-identical to the repo copy" cmp -s "$SRC/weasel/$f" "$d/$f"
+done
+d="$T/fz2"; run "$d" --no-model --with-cangjie5 --fuzzy-default
+check "--fuzzy-default fresh: fuzzy first" test "$(grep -- '- schema:' "$d/default.custom.yaml" | head -4 | tr -d ' \n')" = "-schema:cangjie3_fuzzy-schema:cangjie5_fuzzy-schema:cangjie3_fluency-schema:cangjie5_fluency"
+printf 'patch:\n  schema_list:\n    - schema: cangjie3_fluency\n    - schema: luna_pinyin\n' >"$T/dc_in"
+d="$(dc_case fzdef)"; run "$d" --fuzzy-default
+check "--fuzzy-default existing list: fuzzy inserted at the top" test "$(grep -- '- schema:' "$d/default.custom.yaml" | tr -d ' \n')" = "-schema:cangjie3_fuzzy-schema:cangjie3_fluency-schema:luna_pinyin"
+printf 'patch:\n  schema_list:\n    - schema: cangjie3_fluency\n    - schema: luna_pinyin\n' >"$T/dc_in"
+d="$(dc_case fzdefault_fluency)"; run "$d"
+check "default existing list: fuzzy right after fluency, fluency stays default" test "$(grep -- '- schema:' "$d/default.custom.yaml" | tr -d ' \n')" = "-schema:cangjie3_fluency-schema:cangjie3_fuzzy-schema:luna_pinyin"
+d="$T/fz3"; run "$d" --no-model --no-fuzzy
+check "--no-fuzzy: no fuzzy files" test -z "$(find "$d" -name '*fuzzy*')"
+check "--no-fuzzy: list has no fuzzy id" test -z "$(grep fuzzy "$d/default.custom.yaml")"
+
+# ================================================================== fuzzy range
+for rg in narrow wide; do
+  d="$T/rg_$rg"; run "$d" --no-model --with-cangjie5 --fuzzy-range $rg
+  for f in cangjie3_fuzzy.schema.yaml cangjie3_fuzzy_prism.schema.yaml cangjie5_fuzzy.schema.yaml cangjie5_fuzzy_prism.schema.yaml; do
+    check "--fuzzy-range $rg: $f is the $rg copy" cmp -s "$SRC/weasel/fuzzy-$rg/$f" "$d/$f"
+  done
+  check "--fuzzy-range $rg: fluency files untouched by the range" cmp -s "$SRC/weasel/cangjie3_fluency.schema.yaml" "$d/cangjie3_fluency.schema.yaml"
+done
+check "fuzzy range: narrow and wide differ from the default" test "$(cmp -s "$SRC/weasel/fuzzy-narrow/cangjie3_fuzzy_prism.schema.yaml" "$SRC/weasel/cangjie3_fuzzy_prism.schema.yaml"; echo $?)" = 1
+d="$T/rg_bad"; run "$d" --no-model --fuzzy-range huge; rc=$?
+check "--fuzzy-range huge is refused" test "$rc" -ne 0
 
 # ================================================================== dry run
 d="$T/dry"

@@ -2,7 +2,7 @@
 # Real librime compile + typing test. Needs the main repo checkout (read-only use) for its librime harness:
 #   rimebin/root (extracted Ubuntu debs: librime + librime-plugin-octagram), weasel/docs/rime_driver.py, test case files.
 # usage: bash tests/compile_test.sh [MAIN_REPO_DIR]     (default: ../cangjie-fluency next to this repo)
-# Installs with install.sh into testenv/real (git-ignored), builds with rime_deployer, drives librime key by key.
+# Installs with install.sh --offline (files from the main repo checkout: no network) into testenv/real (git-ignored), builds with rime_deployer, drives librime key by key.
 set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 M="${1:-$HERE/../cangjie-fluency}"
@@ -18,7 +18,7 @@ done
 rm -rf "${U:?}" "${O:?}"; mkdir -p "$O"
 
 echo "## install"
-bash "$HERE/install.sh" --frontend fcitx5 --rime-dir "$U" --with-cangjie5 --no-deploy 2>&1 | tee "$O/install.txt"
+RIME_SHARED_DIRS="$T/none-shared" CJF_SRC_DIR="$M" bash "$HERE/install.sh" --offline --no-deps --frontend fcitx5 --rime-dir "$U" --with-cangjie5 --no-deploy 2>&1 | tee "$O/install.txt"
 
 echo "## build"
 ( time "$R/usr/bin/rime_deployer" --build "$U" "$S" ) 2>&1 | tee "$O/build.txt"
@@ -41,7 +41,7 @@ drv "trace:面" "trace:板橋" 2>&1 | tee "$O/trace_mian.txt"
 
 echo "## --no-model install (plugin loaded by the driver, but no .gram present): must still build and type"
 N="$T/nomodel"; rm -rf "${N:?}"
-bash "$HERE/install.sh" --frontend fcitx5 --rime-dir "$N" --no-model --no-deploy 2>&1 | tee "$O/install_nomodel.txt" | tail -3
+RIME_SHARED_DIRS="$T/none-shared" CJF_SRC_DIR="$M" bash "$HERE/install.sh" --offline --no-deps --frontend fcitx5 --rime-dir "$N" --no-model --no-deploy 2>&1 | tee "$O/install_nomodel.txt" | tail -3
 "$R/usr/bin/rime_deployer" --build "$N" "$S" >/dev/null 2>&1
 { python3 -I "$D/rime_driver.py" --root "$R" --shared "$S" --user "$N" --base "$N/cangjie3.base.dict.yaml" \
     --schema cangjie3_fluency --no-commit --quiet "${SEN[@]}"

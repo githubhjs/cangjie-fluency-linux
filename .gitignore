@@ -1,14 +1,15 @@
+dist/
 *.bak-*
 cangjie3.base.dict.yaml
 .cangjie-fluency-linux.manifest
-*.cin
 *.cjf-part
-*.gram
-# installer backups
-# language models (41 MB, downloaded at install time)
+*.part
+# generated table and scratch files (the real tables live in the main repo)
 mscj3.cin
 .omc/
-# PIME's mscj3.cin has no licence header: never commit it or anything generated from it
-# test dirs and scratch output
 testenv/
 tests/tmp/
+# big data files belong to the main repo; never commit them here
+*.gram
+*.cin
+essay.txt

@@ -300,3 +300,70 @@ SUMMARY grammar=ON ok=51 miss=0
 * A missing .gram does not break typing (2i: 51/51).
 * NOT tested: fcitx5-rime, fcitx-rime, ibus-rime themselves (no GUI session/package here), `fcitx5-remote -r` and `ibus restart` behaviour, Flatpak paths, real log file locations of those front ends, other distributions, x86_64 (only aarch64 run), the `curl | bash` one-liner against the published repo (only `cat install.sh | bash -s` locally, because the GitHub repo does not exist yet).
 * Not compared: whether mscj3.cin equals Windows XP 新倉頡 exactly (inherited limitation, see the main repo).
+
+
+## 5. Self-contained rework (2026-11-10): everything from the main repo, no third party
+
+Sections above describe the earlier installer that downloaded the table, word list and model from PIME, rime-essay and
+rime-octagram-data. The installer now takes **every** file from the main repo (bundle layout next to the script, else
+`raw.githubusercontent.com/githubhjs/cangjie-fluency/<ref>/`, default `v0.4.0`), checks SHA-256 of the tables, essay.txt and model,
+always converts with the repo's `data/essay.txt` (so the table is identical everywhere), and installs engine packages with the
+distribution's own package manager unless `--no-deps`. `--offline` never touches the network.
+
+### 5a. Installer tests, `bash tests/test_install.sh`: 84 passed, 0 failed
+
+Uses the real main-repo files (real tables, real 41,415,724-byte model, real hashes) as the bundle (`CJF_SRC_DIR`), a throwaway Rime dir
+and stub `curl`/`wget`/`sudo`/`apt-get`. Highlights (all passed):
+
+* full bundle `--offline`: exit 0, model installed (41,415,724 B), **zero calls to the curl/wget stubs**, table byte-identical to
+  `python3 tools/cin2rime.py tables/mscj3.cin ... --essay data/essay.txt`;
+* `--offline` without a bundle: fails with a message naming `--offline`, still zero network calls;
+* online without a bundle (`--ref main`, stubs fail): curl was asked for
+  `https://raw.githubusercontent.com/githubhjs/cangjie-fluency/main/weasel/cangjie3_fluency.schema.yaml`, and every URL contacted
+  contains `githubhjs/cangjie-fluency` (nothing else);
+* a table with one extra line: `SHA-256 mismatch`, install stops, no generated table;
+* a system `essay.txt` present: not copied to the user dir, table still byte-identical (built from the repo essay);
+* engine packages: `--dry-run` names `sudo apt-get install -y ibus-rime` and runs nothing; a real run calls the stubbed
+  `sudo apt-get install -y ibus-rime`; `--no-deps` does not call the package manager;
+* the earlier checks (re-run changes nothing, one backup per changed file, `default.custom.yaml` merge cases LF/CRLF/brace/indent/
+  no list/already listed/only cangjie5_fluency, dry-run, uninstall) still pass;
+* `install.sh` contains no `EasyIME|PIME|rime/rime-|lotem/|Homebrew|winget`.
+
+### 5b. Real librime compile test, `bash tests/compile_test.sh /home/hjs/projects/cangjie-fluency`
+
+`install.sh --offline --no-deps` from the main-repo files into a fresh dir (no system essay.txt visible), `rime_deployer --build`
+(5.1 s; cangjie3_fluency.table.bin 15,186,292 B, prism 688,936 B; the same two schemas as before), then the driver key by key:
+
+```
+### sentences.txt (51):  SUMMARY grammar=ON ok=51 miss=0     SUMMARY grammar=OFF ok=51 miss=0
+### hard.txt (40):       SUMMARY grammar=ON ok=37 miss=3     SUMMARY grammar=OFF ok=37 miss=3
+   (misses: 一雙新鞋子 got 一隻, 佑你平安 got 知你平安, 冇有人知道答案 got 有有人知道答案: same-code collisions, identical to before)
+-- trace 面 keys='mwyl':   after 'm' top='不', 'w' '要', 'y' '面'; final keys='mwyl' candidates=['面']
+-- trace 板橋 keys='dhedhkb': 來, 才, 皮, 才沐, 皮才, 皮枖, 板橋
+-- keys='l oj': preedit='中 人十' candidates=['中午', '中', '丨']
+log: octagram.cc:29] use grammar: zh-hant-t-essay-bgw
+--no-model install: builds and types; 'failed to load grammar database' logged as expected (no .gram present)
+```
+
+An earlier run of this test showed 39/51 because this machine has a system `/usr/share/rime-data/essay.txt`, so the installer
+(correctly) did not copy essay.txt into the user dir while the test's librime build looked only in the test's own shared dir;
+`compile_test.sh` now hides system dirs from the installer (`RIME_SHARED_DIRS`), which is what a machine without a system essay.txt sees.
+
+### 5c. Release zips, `./make-release.sh /home/hjs/projects/cangjie-fluency v0.4.0`
+
+```
+38367253 dist/cangjie-fluency-linux-v0.4.0-full.zip
+   29027 dist/cangjie-fluency-linux-v0.4.0-slim.zip
+```
+
+The builder refuses to run if the SHA-256 of a shipped table/essay/model is not the one pinned in `install.sh`.
+Full zip unzipped into a temp dir, then `bash install.sh --offline --no-deps --frontend fcitx5 --rime-dir <tmp> --no-deploy` with
+stub curl/wget/sudo first in PATH: installed `cangjie3_fluency.schema.yaml`, `.dict.yaml`, `essay.txt` (5,887,319), `cangjie3.base.dict.yaml`
+(286,151), `zh-hant-t-essay-bgw.gram` (41,415,724), `default.custom.yaml`; stub log empty (0 network calls); the table is byte-identical to the
+python converter's output.
+
+### 5d. Not verified
+
+* `shellcheck` is not installed on this machine: only `bash -n` was run on the scripts.
+* The package-manager step was never run against real repositories (stubs only); dnf/pacman/zypper names unverified.
+* No fcitx5/fcitx test; GUI typing not tested; x86_64 untested.

@@ -7,22 +7,25 @@
 # Run as a normal user.  Never needs sudo; it only writes into the Rime user directory.
 # Run  ./install.sh --help  for the options.
 #
-# The schema/dict files and tools/cin2rime.py are NOT kept in this repository: they are downloaded from
-# https://github.com/githubhjs/cangjie-fluency at the pinned tag ($REF below).
-# PIME's mscj3.cin has no licence header, so it is downloaded and converted on YOUR machine only.
+# Everything comes from the owner's main repository https://github.com/githubhjs/cangjie-fluency
+# (schema files, code tables, word list, language model, converter) and nothing from any other third party:
+#   1. files next to this script, in the layout of the full release zip (weasel/ tables/ data/ tools/), else
+#   2. the same files from raw.githubusercontent.com/githubhjs/cangjie-fluency/<ref>/ (unless --offline).
+# Tables, word list and language model are SHA-256 checked.  Engine packages (ibus-rime / fcitx5-rime +
+# librime-octagram) are installed with your distribution's own package manager (sudo), unless --no-deps.
 set -euo pipefail
 
 main() {
 
 # ----------------------------------------------------------------------------------------- settings
-REF="${CJF_REF:-v0.2.0}"
+REF="${CJF_REF:-v0.4.0}"
 MAIN_REPO="githubhjs/cangjie-fluency"
-CIN3_URL="https://raw.githubusercontent.com/EasyIME/PIME/master/python/cinbase/cin/mscj3.cin"
-ESSAY_URL="https://raw.githubusercontent.com/rime/rime-essay/master/essay.txt"
-GRAM_URL="https://github.com/lotem/rime-octagram-data/raw/hant/zh-hant-t-essay-bgw.gram"
 GRAM_NAME="zh-hant-t-essay-bgw.gram"
-GRAM_SIZE="${CJF_GRAM_SIZE:-41415724}"
-CJ5_BASE_URL="https://raw.githubusercontent.com/rime/rime-cangjie/master/cangjie5.base.dict.yaml"
+GRAM_SIZE=41415724
+GRAM_SHA="0488ebd6688f900a39200f2b794f2f99bcbf1e8fc27280ae4a2324b08b1559c1"
+ESSAY_SHA="3e8512ebaa6657e35961b1f5762060717c647e3bf471d5e3b86e783b4e934ffb"
+CIN3_SHA="a7b3d03898dc0b2b0bd7803ad0be7b940a1ed945ac5d6314ed832b1dbf6839a2"
+CJ5_BASE_SHA="0b7a801720bbf04cea06c55577c159e2e67b9bbb763bf00026a8520497772799"
 MANIFEST_NAME=".cangjie-fluency-linux.manifest"
 TAG="[cangjie-fluency-linux]"
 
@@ -31,9 +34,10 @@ RIME_DIR="${RIME_DIR:-}"
 WITH_CJ5=0
 NO_MODEL=0
 NO_DEPLOY=0
+NO_DEPS=0
+OFFLINE=0
 DRY=0
 UNINSTALL=0
-REF_GIVEN=0
 WARNINGS=0
 STAMP="$(date +%Y%m%d-%H%M%S)"
 
@@ -50,9 +54,13 @@ Usage: install.sh [options]
                                       also accepted: fcitx5-flatpak (path unverified)
   --rime-dir DIR                      Rime user directory (also env RIME_DIR); skips the front-end paths
   --ref TAG                           tag/branch of github.com/githubhjs/cangjie-fluency to download
-                                      the schema files from (default: v0.2.0, env CJF_REF)
+                                      missing files from (default: v0.4.0, env CJF_REF)
+  --offline                           never touch the network: every file must be next to this script
+                                      (full release zip layout), otherwise the install stops
+  --no-deps                           do not install ibus-rime / fcitx5-rime / librime-plugin-octagram
+                                      with the system package manager
   --with-cangjie5                     also install cangjie5_fluency (5th generation)
-  --no-model                          do not download the 41 MB language model (.gram)
+  --no-model                          do not install the 41 MB language model (.gram)
   --no-deploy                         copy files only, do not restart/redeploy the input method
   --dry-run                           say what would be done, change nothing, download nothing
   --uninstall                         remove the files this installer created (backups are kept)
@@ -70,8 +78,10 @@ while [ $# -gt 0 ]; do
     --frontend=*)     FRONTEND="${1#*=}"; shift ;;
     --rime-dir)       [ $# -ge 2 ] || die "--rime-dir needs a value"; RIME_DIR="$2"; shift 2 ;;
     --rime-dir=*)     RIME_DIR="${1#*=}"; shift ;;
-    --ref)            [ $# -ge 2 ] || die "--ref needs a value"; REF="$2"; REF_GIVEN=1; shift 2 ;;
-    --ref=*)          REF="${1#*=}"; REF_GIVEN=1; shift ;;
+    --ref)            [ $# -ge 2 ] || die "--ref needs a value"; REF="$2"; shift 2 ;;
+    --ref=*)          REF="${1#*=}"; shift ;;
+    --offline)        OFFLINE=1; shift ;;
+    --no-deps)        NO_DEPS=1; shift ;;
     --with-cangjie5)  WITH_CJ5=1; shift ;;
     --no-model)       NO_MODEL=1; shift ;;
     --no-deploy)      NO_DEPLOY=1; shift ;;
@@ -114,8 +124,14 @@ detect_frontend() {
 if [ -z "$RIME_DIR" ]; then
   if [ "$FRONTEND" = auto ]; then
     FRONTEND="$(detect_frontend)"
-    [ "$FRONTEND" != none ] || die "could not detect fcitx5 / fcitx / ibus. Use --frontend, or --rime-dir DIR."
-    say "detected front end: $FRONTEND"
+    if [ "$FRONTEND" = none ]; then
+      [ "$NO_DEPS" -eq 0 ] || die "could not detect fcitx5 / fcitx / ibus. Use --frontend, or --rime-dir DIR."
+      # nothing installed yet: ibus is the default input framework of GNOME/Ubuntu, fcitx5 is the usual one on KDE
+      case "${XDG_CURRENT_DESKTOP:-}" in *KDE*|*kde*|*Plasma*) FRONTEND=fcitx5 ;; *) FRONTEND=ibus ;; esac
+      say "no front end found; will install $FRONTEND (desktop: ${XDG_CURRENT_DESKTOP:-unknown}). Use --frontend to choose another."
+    else
+      say "detected front end: $FRONTEND"
+    fi
   fi
   case "$FRONTEND" in
     fcitx5)         RIME_DIR="$DIR_FCITX5" ;;
@@ -139,13 +155,23 @@ trap cleanup EXIT
 
 file_size() { wc -c <"$1" | tr -d ' '; }
 
-fetch() {   # fetch URL DEST   (CJF_MIRROR_DIR: local directory keyed by file name, for tests/offline use)
-  local url="$1" dest="$2" base
-  base="${url##*/}"
-  if [ -n "${CJF_MIRROR_DIR:-}" ] && [ -f "$CJF_MIRROR_DIR/$base" ]; then
-    cp "$CJF_MIRROR_DIR/$base" "$dest"
-    return 0
+sha256_of() {   # sha256_of FILE -> hex digest (sha256sum, shasum, openssl, python3)
+  if have sha256sum; then sha256sum "$1" | cut -d' ' -f1
+  elif have shasum; then shasum -a 256 "$1" | cut -d' ' -f1
+  elif have openssl; then openssl dgst -sha256 "$1" | sed 's/^.*= *//'
+  else python3 -I -c 'import hashlib,sys;print(hashlib.sha256(open(sys.argv[1],"rb").read()).hexdigest())' "$1"
   fi
+}
+
+verify_sha() {  # verify_sha FILE EXPECTED LABEL
+  local got
+  got="$(sha256_of "$1")"
+  [ "$got" = "$2" ] || die "$3: SHA-256 mismatch (got $got, expected $2). The file is damaged or the wrong version; nothing was installed from it."
+}
+
+fetch() {   # fetch URL DEST   (never called with --offline)
+  local url="$1" dest="$2"
+  [ "$OFFLINE" -eq 0 ] || die "internal error: network access attempted with --offline ($url)"
   if have curl; then
     curl -fsSL --retry 3 --connect-timeout 20 -o "$dest" "$url"
   else
@@ -213,7 +239,7 @@ fi
 
 # ----------------------------------------------------------------------------------------- prerequisites
 have python3 || die "python3 is required (it converts the Cangjie 3 table). Install it with your package manager."
-if ! have curl && ! have wget; then die "curl or wget is required."; fi
+if [ "$OFFLINE" -eq 0 ] && ! have curl && ! have wget; then die "curl or wget is required (or use --offline with the full release zip)."; fi
 
 find_octagram() {
   local d
@@ -234,6 +260,60 @@ octagram_help() {
     Then restart the input method.  librime must load the plugin from its own rime-plugins directory.
 EOF
 }
+
+# ---- engine packages (the distribution's own package manager; skipped with --no-deps or --rime-dir-only use)
+engine_installed() {   # engine_installed ibus|fcitx5
+  case "$1" in
+    ibus)   [ -n "$(find ${CJF_ENGINE_ROOTS:-/usr/lib /usr/lib64 /usr/libexec /usr/local/lib /usr/local/libexec} -maxdepth 3 -name ibus-engine-rime 2>/dev/null | head -n 1)" ] ;;
+    fcitx5) [ -n "$(find ${CJF_ENGINE_ROOTS:-/usr/lib /usr/lib64 /usr/local/lib /usr/local/lib64} -maxdepth 3 -path '*fcitx5*' -name rime.so 2>/dev/null | head -n 1)" ] ;;
+    *) return 0 ;;
+  esac
+}
+
+install_deps() {
+  local want_engine=0 pm pkgs="" cmd
+  case "$FRONTEND" in none|fcitx|fcitx5-flatpak) say "front end '$FRONTEND': not installing engine packages automatically."; return 0 ;; esac
+  case "$FRONTEND" in ibus|fcitx5) engine_installed "$FRONTEND" || want_engine=1 ;; esac
+  local want_plugin=0
+  if [ "$NO_MODEL" -eq 0 ] && ! find_octagram >/dev/null 2>&1; then want_plugin=1; fi
+  [ "$want_engine" -eq 1 ] || [ "$want_plugin" -eq 1 ] || { say "engine packages already present."; return 0; }
+  if have apt-get; then
+    pm=apt                                                    # package names checked with apt-cache on Ubuntu 24.04
+    [ "$want_engine" -eq 0 ] || { [ "$FRONTEND" = ibus ] && pkgs="ibus-rime" || pkgs="fcitx5-rime"; }
+    [ "$want_plugin" -eq 0 ] || pkgs="$pkgs librime-plugin-octagram"
+    cmd="apt-get install -y $pkgs"
+  elif have dnf; then
+    pm=dnf                                                    # unverified names
+    [ "$want_engine" -eq 0 ] || { [ "$FRONTEND" = ibus ] && pkgs="ibus-rime" || pkgs="fcitx5-rime"; }
+    [ "$want_plugin" -eq 0 ] || pkgs="$pkgs librime-octagram"
+    cmd="dnf install -y $pkgs"
+  elif have pacman; then
+    pm=pacman                                                 # unverified names; librime ships the octagram plugin
+    [ "$want_engine" -eq 0 ] || { [ "$FRONTEND" = ibus ] && pkgs="ibus-rime" || pkgs="fcitx5-rime"; }
+    [ -n "$pkgs" ] || { say "pacman: the librime package already provides the octagram plugin."; return 0; }
+    cmd="pacman -S --needed --noconfirm $pkgs"
+  elif have zypper; then
+    pm=zypper                                                 # unverified names
+    [ "$want_engine" -eq 0 ] || { [ "$FRONTEND" = ibus ] && pkgs="ibus-rime" || pkgs="fcitx5-rime"; }
+    [ "$want_plugin" -eq 0 ] || pkgs="$pkgs librime-octagram"
+    cmd="zypper --non-interactive install $pkgs"
+  else
+    warn "no known package manager (apt/dnf/pacman/zypper); install the Rime engine and librime-octagram yourself."
+    return 0
+  fi
+  pkgs="${pkgs# }"
+  if [ "$DRY" -eq 1 ]; then say "DRY: would run: sudo $cmd   ($pm)"; return 0; fi
+  if [ "$(id -u)" -eq 0 ]; then
+    say "installing with $pm: $pkgs"; $cmd || warn "package installation failed: $cmd"
+  elif have sudo; then
+    say "installing with $pm (sudo asks for your password): $pkgs"
+    # shellcheck disable=SC2086
+    sudo $cmd || warn "package installation failed or was cancelled. Run it yourself: sudo $cmd"
+  else
+    warn "sudo not found. Run as root: $cmd"
+  fi
+}
+if [ "$NO_DEPS" -eq 1 ]; then say "--no-deps: not installing engine packages."; else install_deps; fi
 
 if OCT="$(find_octagram)"; then
   say "octagram plugin found: $OCT"
@@ -261,30 +341,41 @@ fi
 SRC_LOCAL=""
 SCRIPT_DIR=""
 if [ -n "${BASH_SOURCE[0]:-}" ] && [ -f "${BASH_SOURCE[0]}" ]; then SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"; fi
-for cand in "${CJF_SRC_DIR:-}" "$SCRIPT_DIR"; do
+for cand in "${CJF_SRC_DIR:-}" "$SCRIPT_DIR"; do   # CJF_SRC_DIR: any directory with the bundle layout (e.g. a checkout of the main repo)
   [ -n "$cand" ] || continue
-  if [ -f "$cand/weasel/cangjie3_fluency.schema.yaml" ] && [ -f "$cand/tools/cin2rime.py" ]; then
-    if [ "$REF_GIVEN" -eq 0 ] || [ -n "${CJF_SRC_DIR:-}" ]; then SRC_LOCAL="$cand"; fi
-    break
-  fi
+  if [ -f "$cand/weasel/cangjie3_fluency.schema.yaml" ] && [ -f "$cand/tools/cin2rime.py" ]; then SRC_LOCAL="$cand"; break; fi
 done
 RAW="https://raw.githubusercontent.com/$MAIN_REPO/$REF"
-if [ -n "$SRC_LOCAL" ]; then say "using local checkout of the main repo: $SRC_LOCAL"; else say "schema files come from $MAIN_REPO at $REF"; fi
+if [ -n "$SRC_LOCAL" ]; then
+  say "using the files next to the installer (bundle layout): $SRC_LOCAL"
+elif [ "$OFFLINE" -eq 1 ]; then
+  die "--offline: the files (weasel/ tables/ data/ tools/) must be next to install.sh (use the full release zip)."
+else
+  say "files come from $MAIN_REPO at $REF"
+fi
 
 if [ "$DRY" -eq 0 ]; then
   mkdir -p "$RIME_DIR"
   WORK="$(mktemp -d "${TMPDIR:-/tmp}/cjf-linux.XXXXXX")"
 fi
 
-get_src() {   # get_src RELPATH_IN_MAIN_REPO DESTFILE
-  if [ -n "$SRC_LOCAL" ]; then cp "$SRC_LOCAL/$1" "$2"; else fetch "$RAW/$1" "$2" || die "download failed: $RAW/$1"; fi
+get_src() {   # get_src RELPATH_IN_MAIN_REPO DESTFILE [SHA256]: bundle copy first, else download (not with --offline)
+  if [ -n "$SRC_LOCAL" ] && [ -f "$SRC_LOCAL/$1" ]; then
+    cp "$SRC_LOCAL/$1" "$2"
+  elif [ "$OFFLINE" -eq 1 ]; then
+    die "--offline: $1 is missing from the bundle"
+  else
+    fetch "$RAW/$1" "$2" || die "download failed: $RAW/$1"
+  fi
+  [ -s "$2" ] || die "$1 is empty"
+  if [ -n "${3:-}" ]; then verify_sha "$2" "$3" "$1"; fi
 }
 
 if [ "$DRY" -eq 1 ]; then
   say "DRY: would install cangjie3_fluency.schema.yaml, cangjie3_fluency.dict.yaml"
-  say "DRY: would download tools/cin2rime.py and PIME mscj3.cin, then write cangjie3.base.dict.yaml (with essay.txt weights)"
+  say "DRY: would convert tables/mscj3.cin (SHA-256 checked) with tools/cin2rime.py and data/essay.txt weights -> cangjie3.base.dict.yaml"
   [ "$WITH_CJ5" -eq 0 ] || say "DRY: would install cangjie5_fluency.schema.yaml, cangjie5_fluency.dict.yaml, cangjie5.base.dict.yaml"
-  [ "$NO_MODEL" -eq 1 ] || say "DRY: would download $GRAM_NAME ($GRAM_SIZE bytes) unless already present"
+  [ "$NO_MODEL" -eq 1 ] || say "DRY: would install $GRAM_NAME ($GRAM_SIZE bytes, SHA-256 checked) unless already present"
 else
   # --- schema + dict (single source of truth: the main repo)
   for f in cangjie3_fluency.schema.yaml cangjie3_fluency.dict.yaml; do
@@ -293,23 +384,22 @@ else
   done
   get_src "tools/cin2rime.py" "$WORK/cin2rime.py"
 
-  # --- essay.txt: needed by the converter (frequency weights) and by use_preset_vocabulary
-  ESSAY=""
-  if ESSAY="$(shared_has essay.txt)"; then
-    say "essay.txt found: $ESSAY"
+  # --- essay.txt: the repository's pinned copy ALWAYS feeds the converter (identical output on every platform);
+  #     it is installed into the user directory only when no system copy exists.
+  get_src "data/essay.txt" "$WORK/essay.txt" "$ESSAY_SHA"
+  SYS_ESSAY=""
+  for d in $SHARED_DIRS; do [ -f "$d/essay.txt" ] && { SYS_ESSAY="$d/essay.txt"; break; }; done
+  if [ -n "$SYS_ESSAY" ]; then
+    say "system essay.txt found ($SYS_ESSAY): not installing another copy"
+  elif [ -f "$RIME_DIR/essay.txt" ]; then
+    say "essay.txt already in $RIME_DIR: left alone"
   else
-    say "essay.txt not found in $RIME_DIR or /usr/share/rime-data: downloading rime-essay"
-    fetch "$ESSAY_URL" "$WORK/essay.txt" || die "download failed: $ESSAY_URL"
-    [ -s "$WORK/essay.txt" ] || die "essay.txt download is empty"
     place_file "$WORK/essay.txt" "essay.txt"
-    ESSAY="$RIME_DIR/essay.txt"
   fi
 
-  # --- 3rd generation table: PIME mscj3.cin, converted here, never stored in this repository
-  say "downloading mscj3.cin from PIME and converting it (not redistributed, see README)"
-  fetch "$CIN3_URL" "$WORK/mscj3.cin" || die "download failed: $CIN3_URL"
-  [ -s "$WORK/mscj3.cin" ] || die "mscj3.cin download is empty"
-  python3 -I "$WORK/cin2rime.py" "$WORK/mscj3.cin" "$WORK/cangjie3.base.dict.yaml" --essay "$ESSAY" >"$WORK/cin2rime.out" \
+  # --- 3rd generation table (tables/mscj3.cin of the main repo, SHA-256 checked), converted here
+  get_src "tables/mscj3.cin" "$WORK/mscj3.cin" "$CIN3_SHA"
+  python3 -I "$WORK/cin2rime.py" "$WORK/mscj3.cin" "$WORK/cangjie3.base.dict.yaml" --essay "$WORK/essay.txt" >"$WORK/cin2rime.out" \
     || die "cin2rime.py failed"
   say "converter: $(tr '\n' ' ' <"$WORK/cin2rime.out")"
   place_file "$WORK/cangjie3.base.dict.yaml" "cangjie3.base.dict.yaml"
@@ -320,23 +410,19 @@ else
       get_src "weasel/$f" "$WORK/$f"
       place_file "$WORK/$f" "$f"
     done
-    fetch "$CJ5_BASE_URL" "$WORK/cangjie5.base.dict.yaml" || die "download failed: $CJ5_BASE_URL"
-    [ -s "$WORK/cangjie5.base.dict.yaml" ] || die "cangjie5.base.dict.yaml download is empty"
+    get_src "tables/cangjie5.base.dict.yaml" "$WORK/cangjie5.base.dict.yaml" "$CJ5_BASE_SHA"
     place_file "$WORK/cangjie5.base.dict.yaml" "cangjie5.base.dict.yaml"
   fi
 
-  # --- language model
+  # --- language model (always the repository's full model, size and hash checked)
   if [ "$NO_MODEL" -eq 0 ]; then
     GRAM_DEST="$RIME_DIR/$GRAM_NAME"
-    if [ -f "$GRAM_DEST" ] && [ "$(file_size "$GRAM_DEST")" = "$GRAM_SIZE" ]; then
-      say "up to date: $GRAM_NAME (size $GRAM_SIZE)"
+    if [ -f "$GRAM_DEST" ] && [ "$(file_size "$GRAM_DEST")" = "$GRAM_SIZE" ] && [ "$(sha256_of "$GRAM_DEST")" = "$GRAM_SHA" ]; then
+      say "up to date: $GRAM_NAME (size $GRAM_SIZE, SHA-256 ok)"
     else
-      say "downloading $GRAM_NAME (~41 MB)"
-      if fetch "$GRAM_URL" "$WORK/$GRAM_NAME" && [ "$(file_size "$WORK/$GRAM_NAME")" = "$GRAM_SIZE" ]; then
-        place_file "$WORK/$GRAM_NAME" "$GRAM_NAME"
-      else
-        warn "$GRAM_NAME download failed or has the wrong size (want $GRAM_SIZE). Continuing without the language model; re-run later."
-      fi
+      get_src "data/$GRAM_NAME" "$WORK/$GRAM_NAME" "$GRAM_SHA"
+      [ "$(file_size "$WORK/$GRAM_NAME")" = "$GRAM_SIZE" ] || die "$GRAM_NAME has the wrong size (want $GRAM_SIZE)"
+      place_file "$WORK/$GRAM_NAME" "$GRAM_NAME"
     fi
   else
     say "skipping the language model (--no-model)"

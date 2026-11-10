@@ -41,9 +41,10 @@ UNINSTALL=0
 WARNINGS=0
 STAMP="$(date +%Y%m%d-%H%M%S)"
 
-say()  { printf '%s %s\n' "$TAG" "$*"; }
-warn() { printf '%s WARNING: %s\n' "$TAG" "$*" >&2; WARNINGS=$((WARNINGS + 1)); }
-die()  { printf '%s ERROR: %s\n' "$TAG" "$*" >&2; exit 1; }
+# Each takes the English message, plus an optional Traditional Chinese line ($2) printed right after it.
+say()  { printf '%s %s\n' "$TAG" "$1"; if [ $# -ge 2 ]; then printf '%s %s\n' "$TAG" "$2"; fi; }
+warn() { printf '%s WARNING: %s\n' "$TAG" "$1" >&2; if [ $# -ge 2 ]; then printf '%s 警告：%s\n' "$TAG" "$2" >&2; fi; WARNINGS=$((WARNINGS + 1)); }
+die()  { printf '%s ERROR: %s\n' "$TAG" "$1" >&2; if [ $# -ge 2 ]; then printf '%s 錯誤：%s\n' "$TAG" "$2" >&2; fi; exit 1; }
 have() { command -v "$1" >/dev/null 2>&1; }
 
 usage() {
@@ -69,16 +70,38 @@ Usage: install.sh [options]
 Existing files are never overwritten silently: a changed file is first copied to NAME.bak-<time>.
 Re-running with identical content changes nothing.
 EOF
+  cat <<'EOF_ZH'
+
+用法：install.sh [選項]
+
+  --frontend fcitx5|fcitx|ibus|auto   要為哪個 Rime 輸入法框架安裝（預設：自動偵測）
+                                      也接受 fcitx5-flatpak（路徑未驗證）
+  --rime-dir DIR                      Rime 使用者資料夾（也可用環境變數 RIME_DIR）；會略過框架的預設路徑
+  --ref TAG                           從 github.com/githubhjs/cangjie-fluency 下載缺少檔案時使用的
+                                      標籤/分支（預設：v0.4.0，環境變數 CJF_REF）
+  --offline                           完全不連網：所有檔案都必須放在本腳本旁邊
+                                      （完整 release zip 的版面配置），否則安裝會中止
+  --no-deps                           不用系統套件管理員安裝 ibus-rime / fcitx5-rime / librime-plugin-octagram
+  --with-cangjie5                     同時安裝 cangjie5_fluency（五代）
+  --no-model                          不安裝 41 MB 的語言模型（.gram）
+  --no-deploy                         只複製檔案，不重新啟動/重新部署輸入法
+  --dry-run                           只說明會做什麼，不更動、不下載
+  --uninstall                         移除本安裝程式建立的檔案（備份檔會保留）
+  -h, --help                          顯示本說明
+
+既有檔案絕不會被悄悄覆蓋：有變動的檔案會先複製成 NAME.bak-<時間>。
+內容相同時重複執行不會有任何變動。
+EOF_ZH
 }
 
 # ----------------------------------------------------------------------------------------- arguments
 while [ $# -gt 0 ]; do
   case "$1" in
-    --frontend)       [ $# -ge 2 ] || die "--frontend needs a value"; FRONTEND="$2"; shift 2 ;;
+    --frontend)       [ $# -ge 2 ] || die "--frontend needs a value" "--frontend 需要一個值"; FRONTEND="$2"; shift 2 ;;
     --frontend=*)     FRONTEND="${1#*=}"; shift ;;
-    --rime-dir)       [ $# -ge 2 ] || die "--rime-dir needs a value"; RIME_DIR="$2"; shift 2 ;;
+    --rime-dir)       [ $# -ge 2 ] || die "--rime-dir needs a value" "--rime-dir 需要一個值"; RIME_DIR="$2"; shift 2 ;;
     --rime-dir=*)     RIME_DIR="${1#*=}"; shift ;;
-    --ref)            [ $# -ge 2 ] || die "--ref needs a value"; REF="$2"; shift 2 ;;
+    --ref)            [ $# -ge 2 ] || die "--ref needs a value" "--ref 需要一個值"; REF="$2"; shift 2 ;;
     --ref=*)          REF="${1#*=}"; shift ;;
     --offline)        OFFLINE=1; shift ;;
     --no-deps)        NO_DEPS=1; shift ;;
@@ -88,13 +111,13 @@ while [ $# -gt 0 ]; do
     --dry-run)        DRY=1; shift ;;
     --uninstall)      UNINSTALL=1; shift ;;
     -h|--help)        usage; exit 0 ;;
-    *)                usage >&2; die "unknown option: $1" ;;
+    *)                usage >&2; die "unknown option: $1" "不認得的選項：$1" ;;
   esac
 done
 
-case "$FRONTEND" in auto|fcitx5|fcitx|ibus|fcitx5-flatpak) ;; *) die "--frontend must be fcitx5, fcitx, ibus or auto" ;; esac
-case "$REF" in *[!A-Za-z0-9._/-]*|"") die "--ref contains unexpected characters" ;; esac
-[ "$(id -u)" -ne 0 ] || warn "running as root: the files would go into root's home. Run as your normal user."
+case "$FRONTEND" in auto|fcitx5|fcitx|ibus|fcitx5-flatpak) ;; *) die "--frontend must be fcitx5, fcitx, ibus or auto" "--frontend 必須是 fcitx5、fcitx、ibus 或 auto" ;; esac
+case "$REF" in *[!A-Za-z0-9._/-]*|"") die "--ref contains unexpected characters" "--ref 含有不允許的字元" ;; esac
+[ "$(id -u)" -ne 0 ] || warn "running as root: the files would go into root's home. Run as your normal user." "目前以 root 身分執行：檔案會放進 root 的家目錄。請改用一般使用者執行。"
 
 # ----------------------------------------------------------------------------------------- front end + directory
 DATA_HOME="${XDG_DATA_HOME:-$HOME/.local/share}"
@@ -125,12 +148,12 @@ if [ -z "$RIME_DIR" ]; then
   if [ "$FRONTEND" = auto ]; then
     FRONTEND="$(detect_frontend)"
     if [ "$FRONTEND" = none ]; then
-      [ "$NO_DEPS" -eq 0 ] || die "could not detect fcitx5 / fcitx / ibus. Use --frontend, or --rime-dir DIR."
+      [ "$NO_DEPS" -eq 0 ] || die "could not detect fcitx5 / fcitx / ibus. Use --frontend, or --rime-dir DIR." "偵測不到 fcitx5 / fcitx / ibus。請用 --frontend 指定，或用 --rime-dir DIR。"
       # nothing installed yet: ibus is the default input framework of GNOME/Ubuntu, fcitx5 is the usual one on KDE
       case "${XDG_CURRENT_DESKTOP:-}" in *KDE*|*kde*|*Plasma*) FRONTEND=fcitx5 ;; *) FRONTEND=ibus ;; esac
-      say "no front end found; will install $FRONTEND (desktop: ${XDG_CURRENT_DESKTOP:-unknown}). Use --frontend to choose another."
+      say "no front end found; will install $FRONTEND (desktop: ${XDG_CURRENT_DESKTOP:-unknown}). Use --frontend to choose another." "找不到輸入法框架；將安裝 $FRONTEND（桌面環境：${XDG_CURRENT_DESKTOP:-unknown}）。要選別的請用 --frontend。"
     else
-      say "detected front end: $FRONTEND"
+      say "detected front end: $FRONTEND" "偵測到輸入法框架：$FRONTEND"
     fi
   fi
   case "$FRONTEND" in
@@ -145,8 +168,8 @@ fi
 case "$RIME_DIR" in /*) ;; *) RIME_DIR="$PWD/$RIME_DIR" ;; esac
 RIME_DIR="${RIME_DIR%/}"
 MANIFEST="$RIME_DIR/$MANIFEST_NAME"
-say "Rime user directory: $RIME_DIR (front end: $FRONTEND)"
-[ "$DRY" -eq 0 ] || say "DRY RUN: nothing will be changed or downloaded."
+say "Rime user directory: $RIME_DIR (front end: $FRONTEND)" "Rime 使用者資料夾：$RIME_DIR（輸入法框架：$FRONTEND）"
+[ "$DRY" -eq 0 ] || say "DRY RUN: nothing will be changed or downloaded." "試跑模式：不會更動或下載任何東西。"
 
 # ----------------------------------------------------------------------------------------- helpers
 WORK=""
@@ -166,12 +189,12 @@ sha256_of() {   # sha256_of FILE -> hex digest (sha256sum, shasum, openssl, pyth
 verify_sha() {  # verify_sha FILE EXPECTED LABEL
   local got
   got="$(sha256_of "$1")"
-  [ "$got" = "$2" ] || die "$3: SHA-256 mismatch (got $got, expected $2). The file is damaged or the wrong version; nothing was installed from it."
+  [ "$got" = "$2" ] || die "$3: SHA-256 mismatch (got $got, expected $2). The file is damaged or the wrong version; nothing was installed from it." "$3：SHA-256 不符（實際 $got，預期 $2）。檔案損毀或版本不對；沒有安裝這個檔案的任何內容。"
 }
 
 fetch() {   # fetch URL DEST   (never called with --offline)
   local url="$1" dest="$2"
-  [ "$OFFLINE" -eq 0 ] || die "internal error: network access attempted with --offline ($url)"
+  [ "$OFFLINE" -eq 0 ] || die "internal error: network access attempted with --offline ($url)" "內部錯誤：使用 --offline 時卻嘗試連網（$url）"
   if have curl; then
     curl -fsSL --retry 3 --connect-timeout 20 -o "$dest" "$url"
   else
@@ -189,57 +212,57 @@ manifest_add() {   # manifest_add LINE  (unique lines only)
 place_file() {
   local src="$1" name="$2" dest="$RIME_DIR/$2"
   if [ -f "$dest" ] && cmp -s "$src" "$dest"; then
-    say "up to date: $name"
+    say "up to date: $name" "已是最新：$name"
     return 0
   fi
   if [ -f "$dest" ]; then
     cp -p "$dest" "$dest.bak-$STAMP"
-    say "backed up $name -> $name.bak-$STAMP"
+    say "backed up $name -> $name.bak-$STAMP" "已備份：$name -> $name.bak-$STAMP"
   fi
   cp "$src" "$dest.cjf-part"
   mv -f "$dest.cjf-part" "$dest"
   manifest_add "$name"
-  say "installed: $name"
+  say "installed: $name" "已安裝：$name"
 }
 
 # ----------------------------------------------------------------------------------------- uninstall
 if [ "$UNINSTALL" -eq 1 ]; then
-  [ -f "$MANIFEST" ] || { say "nothing to uninstall: no $MANIFEST_NAME in $RIME_DIR"; exit 0; }
+  [ -f "$MANIFEST" ] || { say "nothing to uninstall: no $MANIFEST_NAME in $RIME_DIR" "沒有東西可解除安裝：$RIME_DIR 裡沒有 $MANIFEST_NAME"; exit 0; }
   created_dc=0; merged_dc=0
   while IFS= read -r line; do
     case "$line" in
       "") ;;
       @created-default.custom.yaml) created_dc=1 ;;
       @merged-default.custom.yaml)  merged_dc=1 ;;
-      */*|..*) warn "ignoring suspicious manifest entry: $line" ;;
+      */*|..*) warn "ignoring suspicious manifest entry: $line" "略過可疑的清單項目：$line" ;;
       *)
         if [ -f "$RIME_DIR/$line" ]; then
-          if [ "$DRY" -eq 1 ]; then say "DRY: would remove $line"; else rm -f "$RIME_DIR/$line"; say "removed: $line"; fi
+          if [ "$DRY" -eq 1 ]; then say "DRY: would remove $line" "試跑：將會移除 $line"; else rm -f "$RIME_DIR/$line"; say "removed: $line" "已移除：$line"; fi
         fi ;;
     esac
   done <"$MANIFEST"
   dc="$RIME_DIR/default.custom.yaml"
   if [ "$created_dc" -eq 1 ] && [ -f "$dc" ]; then
     if grep -q '^# created by cangjie-fluency-linux' "$dc"; then
-      if [ "$DRY" -eq 1 ]; then say "DRY: would remove default.custom.yaml (created by this installer)"
-      else rm -f "$dc"; say "removed: default.custom.yaml (it was created by this installer)"; fi
+      if [ "$DRY" -eq 1 ]; then say "DRY: would remove default.custom.yaml (created by this installer)" "試跑：將會移除 default.custom.yaml（由本安裝程式建立）"
+      else rm -f "$dc"; say "removed: default.custom.yaml (it was created by this installer)" "已移除：default.custom.yaml（由本安裝程式建立）"; fi
     else
-      say "kept default.custom.yaml (it no longer looks like the file this installer created)"
+      say "kept default.custom.yaml (it no longer looks like the file this installer created)" "保留 default.custom.yaml（它已不像是本安裝程式建立的檔案）"
     fi
   fi
   if [ "$merged_dc" -eq 1 ]; then
-    say "default.custom.yaml was edited by this installer: delete the '- schema: cangjie3_fluency' (and cangjie5_fluency) lines yourself;"
-    say "the pre-edit copy is default.custom.yaml.bak-<time> in $RIME_DIR."
+    say "default.custom.yaml was edited by this installer: delete the '- schema: cangjie3_fluency' (and cangjie5_fluency) lines yourself;" "default.custom.yaml 曾被本安裝程式修改：請自行刪除「- schema: cangjie3_fluency」（以及 cangjie5_fluency）那幾行；"
+    say "the pre-edit copy is default.custom.yaml.bak-<time> in $RIME_DIR." "修改前的備份是 $RIME_DIR 裡的 default.custom.yaml.bak-<時間>。"
   fi
   [ "$DRY" -eq 1 ] || rm -f "$MANIFEST"
-  say "backups (*.bak-*) were kept. Compiled files in $RIME_DIR/build are regenerated on the next deploy."
-  [ "$DRY" -eq 1 ] || say "Redeploy (see README) or restart the input method so the schema disappears from the menu."
+  say "backups (*.bak-*) were kept. Compiled files in $RIME_DIR/build are regenerated on the next deploy." "備份檔（*.bak-*）已保留。$RIME_DIR/build 裡的編譯檔會在下次部署時重新產生。"
+  [ "$DRY" -eq 1 ] || say "Redeploy (see README) or restart the input method so the schema disappears from the menu." "請重新部署（見 README）或重新啟動輸入法，讓方案從選單消失。"
   exit 0
 fi
 
 # ----------------------------------------------------------------------------------------- prerequisites
-have python3 || die "python3 is required (it converts the Cangjie 3 table). Install it with your package manager."
-if [ "$OFFLINE" -eq 0 ] && ! have curl && ! have wget; then die "curl or wget is required (or use --offline with the full release zip)."; fi
+have python3 || die "python3 is required (it converts the Cangjie 3 table). Install it with your package manager." "需要 python3（用來轉換倉頡三代碼表）。請用套件管理員安裝。"
+if [ "$OFFLINE" -eq 0 ] && ! have curl && ! have wget; then die "curl or wget is required (or use --offline with the full release zip)." "需要 curl 或 wget（或用完整 release zip 搭配 --offline）。"; fi
 
 find_octagram() {
   local d
@@ -272,11 +295,11 @@ engine_installed() {   # engine_installed ibus|fcitx5
 
 install_deps() {
   local want_engine=0 pm pkgs="" cmd
-  case "$FRONTEND" in none|fcitx|fcitx5-flatpak) say "front end '$FRONTEND': not installing engine packages automatically."; return 0 ;; esac
+  case "$FRONTEND" in none|fcitx|fcitx5-flatpak) say "front end '$FRONTEND': not installing engine packages automatically." "輸入法框架「$FRONTEND」：不自動安裝引擎套件。"; return 0 ;; esac
   case "$FRONTEND" in ibus|fcitx5) engine_installed "$FRONTEND" || want_engine=1 ;; esac
   local want_plugin=0
   if [ "$NO_MODEL" -eq 0 ] && ! find_octagram >/dev/null 2>&1; then want_plugin=1; fi
-  [ "$want_engine" -eq 1 ] || [ "$want_plugin" -eq 1 ] || { say "engine packages already present."; return 0; }
+  [ "$want_engine" -eq 1 ] || [ "$want_plugin" -eq 1 ] || { say "engine packages already present." "引擎套件已安裝。"; return 0; }
   if have apt-get; then
     pm=apt                                                    # package names checked with apt-cache on Ubuntu 24.04
     [ "$want_engine" -eq 0 ] || { [ "$FRONTEND" = ibus ] && pkgs="ibus-rime" || pkgs="fcitx5-rime"; }
@@ -290,7 +313,7 @@ install_deps() {
   elif have pacman; then
     pm=pacman                                                 # unverified names; librime ships the octagram plugin
     [ "$want_engine" -eq 0 ] || { [ "$FRONTEND" = ibus ] && pkgs="ibus-rime" || pkgs="fcitx5-rime"; }
-    [ -n "$pkgs" ] || { say "pacman: the librime package already provides the octagram plugin."; return 0; }
+    [ -n "$pkgs" ] || { say "pacman: the librime package already provides the octagram plugin." "pacman：librime 套件已內含 octagram 外掛。"; return 0; }
     cmd="pacman -S --needed --noconfirm $pkgs"
   elif have zypper; then
     pm=zypper                                                 # unverified names
@@ -298,29 +321,29 @@ install_deps() {
     [ "$want_plugin" -eq 0 ] || pkgs="$pkgs librime-octagram"
     cmd="zypper --non-interactive install $pkgs"
   else
-    warn "no known package manager (apt/dnf/pacman/zypper); install the Rime engine and librime-octagram yourself."
+    warn "no known package manager (apt/dnf/pacman/zypper); install the Rime engine and librime-octagram yourself." "找不到已知的套件管理員（apt/dnf/pacman/zypper）；請自行安裝 Rime 引擎與 librime-octagram。"
     return 0
   fi
   pkgs="${pkgs# }"
-  if [ "$DRY" -eq 1 ]; then say "DRY: would run: sudo $cmd   ($pm)"; return 0; fi
+  if [ "$DRY" -eq 1 ]; then say "DRY: would run: sudo $cmd   ($pm)" "試跑：將會執行：sudo $cmd   ($pm)"; return 0; fi
   if [ "$(id -u)" -eq 0 ]; then
-    say "installing with $pm: $pkgs"; $cmd || warn "package installation failed: $cmd"
+    say "installing with $pm: $pkgs" "用 $pm 安裝：$pkgs"; $cmd || warn "package installation failed: $cmd" "套件安裝失敗：$cmd"
   elif have sudo; then
-    say "installing with $pm (sudo asks for your password): $pkgs"
+    say "installing with $pm (sudo asks for your password): $pkgs" "用 $pm 安裝（sudo 會要求輸入密碼）：$pkgs"
     # shellcheck disable=SC2086
-    sudo $cmd || warn "package installation failed or was cancelled. Run it yourself: sudo $cmd"
+    sudo $cmd || warn "package installation failed or was cancelled. Run it yourself: sudo $cmd" "套件安裝失敗或被取消。請自行執行：sudo $cmd"
   else
-    warn "sudo not found. Run as root: $cmd"
+    warn "sudo not found. Run as root: $cmd" "找不到 sudo。請以 root 執行：$cmd"
   fi
 }
-if [ "$NO_DEPS" -eq 1 ]; then say "--no-deps: not installing engine packages."; else install_deps; fi
+if [ "$NO_DEPS" -eq 1 ]; then say "--no-deps: not installing engine packages." "--no-deps：不安裝引擎套件。"; else install_deps; fi
 
 if OCT="$(find_octagram)"; then
-  say "octagram plugin found: $OCT"
+  say "octagram plugin found: $OCT" "找到 octagram 外掛：$OCT"
 elif [ "$NO_MODEL" -eq 1 ]; then
-  say "octagram plugin not found (not needed with --no-model)."
+  say "octagram plugin not found (not needed with --no-model)." "找不到 octagram 外掛（使用 --no-model 時不需要）。"
 else
-  warn "librime-octagram plugin not found in the usual places."
+  warn "librime-octagram plugin not found in the usual places." "在常見位置找不到 librime-octagram 外掛。"
   octagram_help
 fi
 
@@ -334,7 +357,7 @@ shared_has() {   # shared_has FILE -> prints path of first match
   return 1
 }
 if ! shared_has luna_pinyin.dict.yaml >/dev/null; then
-  warn "rime-data (luna_pinyin, default.yaml) not found. Install it: Debian/Ubuntu 'librime-data' + 'librime-data-luna-pinyin' (checked names: librime-data); Fedora 'rime-data' (unverified); Arch 'librime-data'."
+  warn "rime-data (luna_pinyin, default.yaml) not found. Install it: Debian/Ubuntu 'librime-data' + 'librime-data-luna-pinyin' (checked names: librime-data); Fedora 'rime-data' (unverified); Arch 'librime-data'." "找不到 rime-data（luna_pinyin、default.yaml）。請安裝：Debian/Ubuntu 的 'librime-data' + 'librime-data-luna-pinyin'（已確認的名稱：librime-data）；Fedora 的 'rime-data'（未驗證）；Arch 的 'librime-data'。"
 fi
 
 # ----------------------------------------------------------------------------------------- source files
@@ -347,11 +370,11 @@ for cand in "${CJF_SRC_DIR:-}" "$SCRIPT_DIR"; do   # CJF_SRC_DIR: any directory 
 done
 RAW="https://raw.githubusercontent.com/$MAIN_REPO/$REF"
 if [ -n "$SRC_LOCAL" ]; then
-  say "using the files next to the installer (bundle layout): $SRC_LOCAL"
+  say "using the files next to the installer (bundle layout): $SRC_LOCAL" "使用安裝程式旁邊的檔案（完整包版面配置）：$SRC_LOCAL"
 elif [ "$OFFLINE" -eq 1 ]; then
-  die "--offline: the files (weasel/ tables/ data/ tools/) must be next to install.sh (use the full release zip)."
+  die "--offline: the files (weasel/ tables/ data/ tools/) must be next to install.sh (use the full release zip)." "--offline：檔案（weasel/ tables/ data/ tools/）必須放在 install.sh 旁邊（請使用完整 release zip）。"
 else
-  say "files come from $MAIN_REPO at $REF"
+  say "files come from $MAIN_REPO at $REF" "檔案來自 $MAIN_REPO（版本 $REF）"
 fi
 
 if [ "$DRY" -eq 0 ]; then
@@ -363,19 +386,19 @@ get_src() {   # get_src RELPATH_IN_MAIN_REPO DESTFILE [SHA256]: bundle copy firs
   if [ -n "$SRC_LOCAL" ] && [ -f "$SRC_LOCAL/$1" ]; then
     cp "$SRC_LOCAL/$1" "$2"
   elif [ "$OFFLINE" -eq 1 ]; then
-    die "--offline: $1 is missing from the bundle"
+    die "--offline: $1 is missing from the bundle" "--offline：完整包裡缺少 $1"
   else
-    fetch "$RAW/$1" "$2" || die "download failed: $RAW/$1"
+    fetch "$RAW/$1" "$2" || die "download failed: $RAW/$1" "下載失敗：$RAW/$1"
   fi
-  [ -s "$2" ] || die "$1 is empty"
+  [ -s "$2" ] || die "$1 is empty" "$1 是空的"
   if [ -n "${3:-}" ]; then verify_sha "$2" "$3" "$1"; fi
 }
 
 if [ "$DRY" -eq 1 ]; then
-  say "DRY: would install cangjie3_fluency.schema.yaml, cangjie3_fluency.dict.yaml"
-  say "DRY: would convert tables/mscj3.cin (SHA-256 checked) with tools/cin2rime.py and data/essay.txt weights -> cangjie3.base.dict.yaml"
-  [ "$WITH_CJ5" -eq 0 ] || say "DRY: would install cangjie5_fluency.schema.yaml, cangjie5_fluency.dict.yaml, cangjie5.base.dict.yaml"
-  [ "$NO_MODEL" -eq 1 ] || say "DRY: would install $GRAM_NAME ($GRAM_SIZE bytes, SHA-256 checked) unless already present"
+  say "DRY: would install cangjie3_fluency.schema.yaml, cangjie3_fluency.dict.yaml" "試跑：將會安裝 cangjie3_fluency.schema.yaml、cangjie3_fluency.dict.yaml"
+  say "DRY: would convert tables/mscj3.cin (SHA-256 checked) with tools/cin2rime.py and data/essay.txt weights -> cangjie3.base.dict.yaml" "試跑：將會用 tools/cin2rime.py 與 data/essay.txt 的權重轉換 tables/mscj3.cin（已檢查 SHA-256）-> cangjie3.base.dict.yaml"
+  [ "$WITH_CJ5" -eq 0 ] || say "DRY: would install cangjie5_fluency.schema.yaml, cangjie5_fluency.dict.yaml, cangjie5.base.dict.yaml" "試跑：將會安裝 cangjie5_fluency.schema.yaml、cangjie5_fluency.dict.yaml、cangjie5.base.dict.yaml"
+  [ "$NO_MODEL" -eq 1 ] || say "DRY: would install $GRAM_NAME ($GRAM_SIZE bytes, SHA-256 checked) unless already present" "試跑：將會安裝 $GRAM_NAME（$GRAM_SIZE 位元組，已檢查 SHA-256），若已存在則略過"
 else
   # --- schema + dict (single source of truth: the main repo)
   for f in cangjie3_fluency.schema.yaml cangjie3_fluency.dict.yaml; do
@@ -390,9 +413,9 @@ else
   SYS_ESSAY=""
   for d in $SHARED_DIRS; do [ -f "$d/essay.txt" ] && { SYS_ESSAY="$d/essay.txt"; break; }; done
   if [ -n "$SYS_ESSAY" ]; then
-    say "system essay.txt found ($SYS_ESSAY): not installing another copy"
+    say "system essay.txt found ($SYS_ESSAY): not installing another copy" "找到系統的 essay.txt（$SYS_ESSAY）：不再安裝另一份"
   elif [ -f "$RIME_DIR/essay.txt" ]; then
-    say "essay.txt already in $RIME_DIR: left alone"
+    say "essay.txt already in $RIME_DIR: left alone" "$RIME_DIR 裡已有 essay.txt：不動它"
   else
     place_file "$WORK/essay.txt" "essay.txt"
   fi
@@ -400,8 +423,8 @@ else
   # --- 3rd generation table (tables/mscj3.cin of the main repo, SHA-256 checked), converted here
   get_src "tables/mscj3.cin" "$WORK/mscj3.cin" "$CIN3_SHA"
   python3 -I "$WORK/cin2rime.py" "$WORK/mscj3.cin" "$WORK/cangjie3.base.dict.yaml" --essay "$WORK/essay.txt" >"$WORK/cin2rime.out" \
-    || die "cin2rime.py failed"
-  say "converter: $(tr '\n' ' ' <"$WORK/cin2rime.out")"
+    || die "cin2rime.py failed" "cin2rime.py 執行失敗"
+  say "converter: $(tr '\n' ' ' <"$WORK/cin2rime.out")" "轉換器輸出：$(tr '\n' ' ' <"$WORK/cin2rime.out")"
   place_file "$WORK/cangjie3.base.dict.yaml" "cangjie3.base.dict.yaml"
 
   # --- optional 5th generation
@@ -418,14 +441,14 @@ else
   if [ "$NO_MODEL" -eq 0 ]; then
     GRAM_DEST="$RIME_DIR/$GRAM_NAME"
     if [ -f "$GRAM_DEST" ] && [ "$(file_size "$GRAM_DEST")" = "$GRAM_SIZE" ] && [ "$(sha256_of "$GRAM_DEST")" = "$GRAM_SHA" ]; then
-      say "up to date: $GRAM_NAME (size $GRAM_SIZE, SHA-256 ok)"
+      say "up to date: $GRAM_NAME (size $GRAM_SIZE, SHA-256 ok)" "已是最新：$GRAM_NAME（大小 $GRAM_SIZE，SHA-256 正確）"
     else
       get_src "data/$GRAM_NAME" "$WORK/$GRAM_NAME" "$GRAM_SHA"
-      [ "$(file_size "$WORK/$GRAM_NAME")" = "$GRAM_SIZE" ] || die "$GRAM_NAME has the wrong size (want $GRAM_SIZE)"
+      [ "$(file_size "$WORK/$GRAM_NAME")" = "$GRAM_SIZE" ] || die "$GRAM_NAME has the wrong size (want $GRAM_SIZE)" "$GRAM_NAME 的大小不對（應為 $GRAM_SIZE）"
       place_file "$WORK/$GRAM_NAME" "$GRAM_NAME"
     fi
   else
-    say "skipping the language model (--no-model)"
+    say "skipping the language model (--no-model)" "略過語言模型（--no-model）"
   fi
 fi
 
@@ -506,10 +529,10 @@ PY
 
 dc_step() {
   if [ ! -e "$DC" ]; then
-    if [ "$DRY" -eq 1 ]; then say "DRY: would create default.custom.yaml with: $IDS luna_pinyin"; return 0; fi
+    if [ "$DRY" -eq 1 ]; then say "DRY: would create default.custom.yaml with: $IDS luna_pinyin" "試跑：將會建立 default.custom.yaml，內容：$IDS luna_pinyin"; return 0; fi
     fresh_default_custom >"$DC"
     manifest_add "@created-default.custom.yaml"
-    say "created default.custom.yaml ($IDS first)"
+    say "created default.custom.yaml ($IDS first)" "已建立 default.custom.yaml（$IDS 排在最前面）"
     return 0
   fi
   local out rc=0
@@ -517,22 +540,22 @@ dc_step() {
   # shellcheck disable=SC2086
   merge_schema_list "$DC" "$out" $IDS || rc=$?
   case "$rc" in
-    10) say "default.custom.yaml already lists $IDS: left untouched" ;;
+    10) say "default.custom.yaml already lists $IDS: left untouched" "default.custom.yaml 已列出 $IDS：不動它" ;;
     11)
-      warn "default.custom.yaml has no block-style 'schema_list:', so I did not touch it. Add this under 'patch:' yourself:"
+      warn "default.custom.yaml has no block-style 'schema_list:', so I did not touch it. Add this under 'patch:' yourself:" "default.custom.yaml 沒有區塊寫法的 'schema_list:'，所以沒有修改它。請自行把下面這段加到 'patch:' 底下："
       printf '    schema_list:\n'
       for id in $IDS; do printf '      - schema: %s\n' "$id"; done
       printf '      # ...then the schemas you already use (a patched schema_list replaces the stock one)\n' ;;
     0)
-      if [ "$DRY" -eq 1 ]; then say "DRY: would back up default.custom.yaml and insert $IDS at the top of its schema_list"
+      if [ "$DRY" -eq 1 ]; then say "DRY: would back up default.custom.yaml and insert $IDS at the top of its schema_list" "試跑：將會備份 default.custom.yaml，並把 $IDS 插入 schema_list 的最前面"
       else
         cp -p "$DC" "$DC.bak-$STAMP"
-        say "backed up default.custom.yaml -> default.custom.yaml.bak-$STAMP"
+        say "backed up default.custom.yaml -> default.custom.yaml.bak-$STAMP" "已備份：default.custom.yaml -> default.custom.yaml.bak-$STAMP"
         cp "$out" "$DC.cjf-part"; mv -f "$DC.cjf-part" "$DC"
         manifest_add "@merged-default.custom.yaml"
-        say "inserted $IDS as first entr(y/ies) of your schema_list in default.custom.yaml"
+        say "inserted $IDS as first entr(y/ies) of your schema_list in default.custom.yaml" "已把 $IDS 插入 default.custom.yaml 的 schema_list 最前面"
       fi ;;
-    *) warn "could not process default.custom.yaml (python exit $rc); left untouched" ;;
+    *) warn "could not process default.custom.yaml (python exit $rc); left untouched" "無法處理 default.custom.yaml（python 結束碼 $rc）；未做任何修改" ;;
   esac
   rm -f "$out"
 }
@@ -540,38 +563,38 @@ dc_step
 
 # ----------------------------------------------------------------------------------------- deploy
 deploy() {
-  [ "$DRY" -eq 0 ] || { say "DRY: would deploy (front end: $FRONTEND)"; return 0; }
-  [ "$NO_DEPLOY" -eq 0 ] || { say "--no-deploy: not restarting the input method."; return 0; }
+  [ "$DRY" -eq 0 ] || { say "DRY: would deploy (front end: $FRONTEND)" "試跑：將會部署（輸入法框架：$FRONTEND）"; return 0; }
+  [ "$NO_DEPLOY" -eq 0 ] || { say "--no-deploy: not restarting the input method." "--no-deploy：不重新啟動輸入法。"; return 0; }
   case "$FRONTEND" in
     fcitx5)
       if have fcitx5-remote; then
-        if fcitx5-remote -r >/dev/null 2>&1; then say "ran: fcitx5-remote -r (reload)"; else warn "fcitx5-remote -r failed; is fcitx5 running?"; fi
-        say "If the schema does not appear or still looks old, restart Fcitx5 fully (or pick 'Deploy' in the Rime tray menu)."
+        if fcitx5-remote -r >/dev/null 2>&1; then say "ran: fcitx5-remote -r (reload)" "已執行：fcitx5-remote -r（重新載入）"; else warn "fcitx5-remote -r failed; is fcitx5 running?" "fcitx5-remote -r 失敗；fcitx5 有在執行嗎？"; fi
+        say "If the schema does not appear or still looks old, restart Fcitx5 fully (or pick 'Deploy' in the Rime tray menu)." "如果方案沒有出現或仍是舊的，請完整重新啟動 Fcitx5（或在 Rime 系統匣選單選「Deploy」）。"
       else
-        warn "fcitx5-remote not found; restart Fcitx5 yourself, then choose Deploy in the Rime tray menu."
+        warn "fcitx5-remote not found; restart Fcitx5 yourself, then choose Deploy in the Rime tray menu." "找不到 fcitx5-remote；請自行重新啟動 Fcitx5，然後在 Rime 系統匣選單選「Deploy」。"
       fi ;;
-    fcitx5-flatpak) say "Flatpak Fcitx5: restart it yourself (path and method unverified), then choose Deploy in the Rime tray menu." ;;
+    fcitx5-flatpak) say "Flatpak Fcitx5: restart it yourself (path and method unverified), then choose Deploy in the Rime tray menu." "Flatpak 版 Fcitx5：請自行重新啟動（路徑與方法未驗證），然後在 Rime 系統匣選單選「Deploy」。" ;;
     fcitx)
       if have fcitx-remote; then
-        if fcitx-remote -r >/dev/null 2>&1; then say "ran: fcitx-remote -r (reload)"; else warn "fcitx-remote -r failed"; fi
-        say "If it does not pick up the schema, choose Deploy in the fcitx-rime menu or restart fcitx."
-      else warn "fcitx-remote not found; restart fcitx yourself."; fi ;;
+        if fcitx-remote -r >/dev/null 2>&1; then say "ran: fcitx-remote -r (reload)" "已執行：fcitx-remote -r（重新載入）"; else warn "fcitx-remote -r failed" "fcitx-remote -r 失敗"; fi
+        say "If it does not pick up the schema, choose Deploy in the fcitx-rime menu or restart fcitx." "如果沒有載入方案，請在 fcitx-rime 選單選「Deploy」或重新啟動 fcitx。"
+      else warn "fcitx-remote not found; restart fcitx yourself." "找不到 fcitx-remote；請自行重新啟動 fcitx。"; fi ;;
     ibus)
       if have ibus; then
-        if ibus restart >/dev/null 2>&1; then say "ran: ibus restart (unverified: if the schema is missing, use Deploy in the ibus-rime menu)"; else warn "ibus restart failed"; fi
-      else warn "ibus not found; restart ibus yourself (ibus-daemon -drx)."; fi ;;
-    none) say "custom directory, no front end named: not restarting anything. Redeploy from your input method's menu." ;;
+        if ibus restart >/dev/null 2>&1; then say "ran: ibus restart (unverified: if the schema is missing, use Deploy in the ibus-rime menu)" "已執行：ibus restart（未驗證：如果方案不見了，請在 ibus-rime 選單用「Deploy」）"; else warn "ibus restart failed" "ibus restart 失敗"; fi
+      else warn "ibus not found; restart ibus yourself (ibus-daemon -drx)." "找不到 ibus；請自行重新啟動 ibus（ibus-daemon -drx）。"; fi ;;
+    none) say "custom directory, no front end named: not restarting anything. Redeploy from your input method's menu." "自訂資料夾、未指定輸入法框架：不重新啟動任何東西。請從你的輸入法選單重新部署。" ;;
   esac
 }
 deploy
 
 # ----------------------------------------------------------------------------------------- finish
 if [ "$DRY" -eq 1 ]; then
-  say "dry run finished; nothing was changed."
+  say "dry run finished; nothing was changed." "試跑結束；沒有更動任何東西。"
 else
-  say "Done. Switch to the schema with Ctrl+\` (or F4) and pick 'cangjie3_fluency'."
-  say "Check the language model: grep -h 'use grammar\\|failed to load grammar' in the Rime log (see README): want a 'use grammar: $GRAM_NAME' line and NO 'failed to load grammar' line (glog buffers: it can appear late)."
-  [ "$WARNINGS" -eq 0 ] || say "finished with $WARNINGS warning(s), see above."
+  say "Done. Switch to the schema with Ctrl+\` (or F4) and pick 'cangjie3_fluency'." "完成。按 Ctrl+\`（或 F4）切換方案，選「cangjie3_fluency」。"
+  say "Check the language model: grep -h 'use grammar\\|failed to load grammar' in the Rime log (see README): want a 'use grammar: $GRAM_NAME' line and NO 'failed to load grammar' line (glog buffers: it can appear late)." "檢查語言模型：在 Rime 記錄檔裡 grep -h 'use grammar\\|failed to load grammar'（見 README）：要看到「use grammar: $GRAM_NAME」那一行，且沒有「failed to load grammar」那一行（glog 有緩衝：可能較晚才出現）。"
+  [ "$WARNINGS" -eq 0 ] || say "finished with $WARNINGS warning(s), see above." "完成，但有 $WARNINGS 個警告，請看上方訊息。"
 fi
 
 }   # end of main

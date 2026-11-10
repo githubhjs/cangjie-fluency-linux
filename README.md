@@ -1,4 +1,12 @@
-# cangjie-fluency-linux
+# cangjie-fluency-linux / 倉頡整句輸入（Linux 版）
+
+在 Linux 上提供微軟風格的完整倉頡整句輸入：一次打完整個詞組的倉頡碼，緩衝區會一邊輸入一邊重新斷詞並自動修正，按 Enter 上屏，
+不必每打完一個碼就選字。這是一套 [Rime](https://rime.im) 方案，適用於 **ibus-rime、fcitx5-rime 與 fcitx-rime**。
+
+所需的一切都由作者的主倉庫 [githubhjs/cangjie-fluency](https://github.com/githubhjs/cangjie-fluency) 提供：方案檔、倉頡碼表（`tables/`）、
+詞表與語言模型（`data/`）以及轉換工具（`tools/`）。這些檔案的來源與授權記載於主倉庫的 `tables/README.md` 與 `data/README.md`。
+**不需要任何其他第三方下載**：安裝腳本不會連到 PIME、rime-essay、rime-octagram-data、rime-cangjie 或其他任何來源。
+它唯一會用到的，是你的發行版自己的套件管理員（apt、dnf、pacman、zypper）來安裝 Rime 引擎套件，這一步可用 `--no-deps` 關閉。
 
 Microsoft-style sentence input for full Cangjie on Linux: type a whole phrase of Cangjie codes, the buffer
 re-segments and auto-corrects as you type, Enter commits. No picking a character after every code.
@@ -14,16 +22,25 @@ packages, and that can be switched off with `--no-deps`.
 
 繁體中文說明在[文件後半](#繁體中文)。
 
-## Why the 3rd generation (三代)
+## Why the 3rd generation (三代) / 為什麼是三代
+
+Windows XP 內建的「新倉頡」是經過修改的**倉頡三代**。多數 Rime 方案使用的五代碼表，約有五分之一的字碼與三代不同
+（「面」三代是 `mwyl`、五代是 `mwsl`；「作」`ohs` 對 `oos`；「非」`lmyyy` 對 `lmsy`）。因此這裡預設的方案是 **`cangjie3_fluency`**。
+五代版本 `cangjie5_fluency` 可作為選項安裝（`--with-cangjie5`）。
 
 The "新倉頡" that ships with Windows XP is a modified **3rd-generation** Cangjie. The 5th-generation table that most
 Rime schemas use differs in roughly a fifth of the codes (面 is `mwyl` in 3rd gen and `mwsl` in 5th gen; 作 `ohs` vs `oos`;
 非 `lmyyy` vs `lmsy`). So the default schema here is **`cangjie3_fluency`**. The 5th-generation variant
 `cangjie5_fluency` is available as an option (`--with-cangjie5`).
 
-## Install
+## Install / 安裝
 
-### Option A: full release zip (works offline)
+### Option A: full release zip (works offline) / 方式 A：完整發行 zip（可離線使用）
+
+從本倉庫的 Releases 下載 `cangjie-fluency-linux-<version>-full.zip`，解壓縮後執行下方英文區塊中的指令。
+
+完整 zip 內含安裝腳本、方案檔、碼表、詞表、41,415,724 位元組的語言模型與轉換工具（壓縮後約 38 MB）。使用 `--offline` 時，
+安裝腳本完全不碰網路，若缺少檔案會以清楚的訊息停止。另有 `slim` zip（安裝腳本 + 方案檔 + 轉換工具，約 29 KB），其餘檔案會從主倉庫下載。
 
 Download `cangjie-fluency-linux-<version>-full.zip` from this repository's Releases, unzip, then:
 
@@ -36,7 +53,46 @@ The zip contains the installer, the schema files, the tables, the word list, the
 converter (about 38 MB zipped). With `--offline` the installer never touches the network and stops with a clear message if a file is
 missing. A `slim` zip (installer + schema files + converter, about 29 KB) also exists; it fetches the rest from the main repo.
 
-### Option B: one line
+### Option B: one line / 方式 B：一行指令
+
+一行指令見下方英文區塊。較安全的做法是分兩步（先閱讀腳本，再試跑 `--dry-run`），指令同樣見下方。
+
+安裝腳本依序執行：
+
+1. 尋找你的輸入法框架（先找執行中的常駐程式，再找既有的 Rime 目錄，最後找已安裝的程式）。若都沒有安裝，
+   就選 ibus（GNOME/Ubuntu 預設）或 fcitx5（KDE）並安裝。
+2. 以發行版的套件管理員、透過 `sudo` 安裝缺少的引擎套件（Debian/Ubuntu：`ibus-rime` 或 `fcitx5-rime`，
+   另加供語言模型使用的 `librime-plugin-octagram`）。可用 `--no-deps` 跳過。
+3. 所有檔案優先取自 `install.sh` 旁邊的資料夾（完整 zip 的結構為 `weasel/ tables/ data/ tools/`），否則取自
+   `raw.githubusercontent.com/githubhjs/cangjie-fluency/<ref>/`（預設 `v0.4.0`）。碼表、詞表與語言模型都會以
+   腳本中固定的雜湊值做 **SHA-256 核對**。
+4. 在你的電腦上用 `tools/cin2rime.py` 把 `tables/mscj3.cin` 轉成 `cangjie3.base.dict.yaml`，詞頻權重一律使用
+   倉庫的 `data/essay.txt`，因此各平台的結果逐位元組相同。
+5. 把 `data/zh-hant-t-essay-bgw.gram`（完整模型）安裝到 Rime 目錄；`essay.txt` 只有在系統沒有現成副本時才安裝。
+6. 在 `default.custom.yaml` 中把 `cangjie3_fluency` 放在第一位，並重新部署。
+
+選項：
+
+| 選項 | 意義 |
+|---|---|
+| `--frontend ibus\|fcitx5\|fcitx\|auto` | 預設 `auto`（先找執行中的常駐程式，再找既有目錄，最後找已安裝的程式） |
+| `--rime-dir DIR`（或環境變數 `RIME_DIR`） | 安裝到 `DIR`，供測試或特殊環境使用；除非同時指定 `--frontend`，否則不會重新啟動任何程式 |
+| `--offline` | 完全不碰網路；每個檔案都必須在 `install.sh` 旁邊（請使用完整 zip） |
+| `--no-deps` | 不用套件管理員安裝引擎套件 |
+| `--ref TAG` | 從主倉庫的哪個標籤／分支下載缺少的檔案（預設 `v0.4.0`） |
+| `--with-cangjie5` | 一併安裝 `cangjie5_fluency`（以及主倉庫 `tables/` 中的五代碼表） |
+| `--no-model` | 跳過 41 MB 的語言模型 |
+| `--no-deploy` | 只複製檔案 |
+| `--dry-run` | 只印出會做什麼，不變更也不下載任何東西 |
+| `--uninstall` | 只移除本安裝腳本建立的檔案（它會保存一份清單）；備份會保留 |
+
+安全特性（由 `tests/test_install.sh` 涵蓋，共 84 項檢查）：以相同內容重複執行時不會重寫任何檔案，也不會建立備份；
+內容有變動的檔案只會得到一份 `NAME.bak-<timestamp>`；你的 `default.custom.yaml` 絕不會被覆蓋。
+若它已有 `schema_list:`，安裝腳本會先備份該檔，並把 `- schema: cangjie3_fluency` 插入為**第一項**，同時保留你的縮排、
+換行字元（LF/CRLF）、`- {schema: x}` 大括號寫法，以及缺少結尾換行的狀況。若 `cangjie3_fluency` 已列在其中則不新增（以完整 id 比對）。
+若檔案沒有區塊式（block-style）的 `schema_list:`，則不會動它，安裝腳本會印出該加入的內容。
+若沒有 `default.custom.yaml`，則會建立一個，列出 `cangjie3_fluency` 與 `luna_pinyin`（打了補丁的 `schema_list` 會取代原本的預設清單，
+所以請自行加入你使用的方案）。
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/githubhjs/cangjie-fluency-linux/main/install.sh | bash
@@ -89,7 +145,21 @@ newline. If `cangjie3_fluency` is already listed nothing is added (exact id matc
 listing `cangjie3_fluency` and `luna_pinyin` (a patched `schema_list` replaces the stock list, so add the schemas you
 use).
 
-## Engine packages per distribution
+## Engine packages per distribution / 各發行版的引擎套件
+
+除非你加上 `--no-deps`，`install.sh` 會透過 `sudo` 執行對應的指令（會要求輸入密碼）：
+
+| | 執行的指令 | 狀態 |
+|---|---|---|
+| Debian / Ubuntu | `apt-get install -y ibus-rime`（或 `fcitx5-rime`）`librime-plugin-octagram` | 套件名稱已在 Ubuntu 24.04 以 `apt-cache` 核對；安裝本身只用假（stub）指令測試過 |
+| Fedora | `dnf install -y ibus-rime`（或 `fcitx5-rime`）`librime-octagram` | `librime-octagram` 存在於 rawhide（以 mdapi 核對）；`ibus-rime`／`fcitx5-rime` 的名稱**未驗證** |
+| Arch Linux | `pacman -S --needed --noconfirm ibus-rime`（或 `fcitx5-rime`） | 官方 `librime` 套件已內含 `librime-octagram.so`（已核對其檔案清單）；名稱**未驗證** |
+| openSUSE | `zypper --non-interactive install ibus-rime`（或 `fcitx5-rime`）`librime-octagram` | **未驗證** |
+| Gentoo、NixOS、Flatpak 及其他 | 未自動化 | 請自行安裝引擎與 `librime-octagram` |
+
+另外還需要 Rime 共用資料（`default.yaml`、`luna_pinyin` 等），通常由引擎套件一併裝入（Debian/Ubuntu：`librime-data`）。
+使用的使用者目錄（可用 `--rime-dir` 覆寫）：ibus-rime `~/.config/ibus/rime`、
+fcitx5-rime `~/.local/share/fcitx5/rime`、fcitx-rime `~/.config/fcitx/rime`。
 
 `install.sh` runs the matching command through `sudo` (you are asked for your password) unless you pass `--no-deps`:
 
@@ -105,7 +175,28 @@ Also needed: the Rime shared data (`default.yaml`, `luna_pinyin`, ...), normally
 (Debian/Ubuntu: `librime-data`). User directories used (override with `--rime-dir`): ibus-rime `~/.config/ibus/rime`,
 fcitx5-rime `~/.local/share/fcitx5/rime`, fcitx-rime `~/.config/fcitx/rime`.
 
-## Deploy, switch, verify
+## Deploy, switch, verify / 部署、切換、確認
+
+除非加上 `--no-deploy`，安裝腳本最後會執行部署步驟：
+
+| 輸入法框架 | 執行的指令 | 在此驗證過嗎？ |
+|---|---|---|
+| ibus | `ibus restart` | 已透過 IBus API 實機測試（見下方） |
+| fcitx5 | `fcitx5-remote -r`（重新載入）。若方案沒有出現或看起來是舊的，請完整重新啟動 Fcitx5，或使用 Rime 托盤選單中的**部署** | **未驗證**（沒有 fcitx5 可用） |
+| fcitx (4) | `fcitx-remote -r` | **未驗證** |
+
+第一次部署會編譯詞典（在測試機器上約 5 秒，產生 15 MB 的碼表）。
+
+**切換方案：** 按 `Ctrl+`` （重音符）或 `F4`，選「倉頡三代整句」（`cangjie3_fluency`）。
+
+**確認語言模型已載入。** 切換到該方案後查看 Rime 日誌（指令見下方英文區塊）。
+
+正常情況：有一行 `octagram.cc:29] use grammar: zh-hant-t-essay-bgw`，且**沒有** `failed to load grammar database`。
+`.gram` 檔案不存在時也會印出 `use grammar` 這一行；真正的失敗會緊接著出現
+`E... octagram.cc:180] failed to load grammar database: zh-hant-t-essay-bgw`。完全沒有 `use grammar` 這一行，
+代表 octagram 外掛沒有載入。日誌位置：**ibus-rime 已驗證**，在 Ubuntu 24.04 上為
+`/tmp/rime.ibus.<host>.<user>.log.INFO.<date>-<time>.<pid>`；fcitx5-rime 則**未驗證**。glog 會緩衝 INFO 檔案，
+所以那一行可能較晚才出現（約等 30 秒，或停止引擎）。
 
 The installer ends with a deploy step unless you pass `--no-deploy`:
 
@@ -132,7 +223,28 @@ means the octagram plugin was not loaded. Logs: for **ibus-rime this is verified
 `/tmp/rime.ibus.<host>.<user>.log.INFO.<date>-<time>.<pid>` on Ubuntu 24.04; for fcitx5-rime it is **unverified**. glog buffers the
 INFO file, so the line can show up late (wait about 30 s or stop the engine).
 
-## Typing notes
+## Typing notes / 打法說明
+
+* 只要一直打碼：`dhedhkb` 會變成 板橋，繼續輸入時前面的字會被自動修正，不需要選字。
+* 字碼**只有單一字母**的字後面需要空格：「中」是 `l`，所以「中午」要打 `l oj`。其他字碼可以連著打，
+  碼與碼之間的空格可有可無。
+* **Enter** 上屏整句。`,` `.` `!` `?` 會先上屏整句，再輸入（全形）標點。
+  緩衝區內的空格只用來分隔字碼；連按兩次空格會上屏整句再加一個空格。
+* Backspace 刪掉一個碼（並重新斷詞），Esc 清空緩衝區。Page Up/Down 與方向鍵可在候選字間移動；
+  同碼字（例如三代中 `okr` 的 佑 / 知）依詞頻排序，可能需要選一下候選字。
+* `` ` `` 後接拼音會做反查（需要 `luna_pinyin`，即 rime-data 套件）。
+* 三代對同碼的第二個字沒有「難」（X）前綴（那是五代的功能）。
+
+**語言模型。** 我們的測試句（51 句日常句、40 句同碼困難句，共 91 句整句，以及
+34 組同碼詞對，例如 手感/手怠 與 頻率/顏率）在有無語言模型時結果相同，因為這些詞在 `essay.txt` 中已有詞頻。
+我們沒有找到能量測出模型效果的案例。模型檔（`zh-hant-t-essay-bgw.gram`）隨主倉庫提供，仍會安裝。
+
+**實機測試，ibus-rime（2026-11-10）。** Ubuntu 24.04 aarch64、IBus 1.5.29-rc2、ibus-rime 1.5.0、librime 1.10.0 搭配 Ubuntu 的
+`librime-plugin-octagram`，透過 IBus API 驅動（`tests/ibus_live_test.py`：對綁定到 `rime` 引擎的輸入環境送出真實按鍵事件，
+讀回預編輯（preedit）、候選字與已上屏文字）。**10 項案例全數通過**：面 `mwyl`、非 `lmyyy`、作 `ohs`；
+`okr` 依序提供 佑、知；板橋 `dhedhkb`；中午 `l oj`；另有四個整句，連續輸入、不打空格、不選候選字，結果與原文完全一致。
+日誌顯示 `loaded plugin: octagram`、`use grammar: zh-hant-t-essay-bgw`，沒有 `failed to load grammar`，也沒有 `E` 行。
+這**不是**圖形介面測試（沒有文字方塊、沒有候選視窗）。
 
 * Just keep typing codes: `dhedhkb` becomes 板橋 and earlier characters get corrected as you continue. No selection needed.
 * A character whose Cangjie code is a **single letter** needs a trailing space: 中 is `l`, so 中午 is `l oj`. Other codes
@@ -156,7 +268,19 @@ the `rime` engine, preedit, candidates and committed text read back). **10 of 10
 candidate selection came out exactly as written. The log shows `loaded plugin: octagram`, `use grammar: zh-hant-t-essay-bgw`, no
 `failed to load grammar` and no `E` lines. It was **not** a GUI test (no text box, no candidate window).
 
-## Known limits
+## Known limits / 已知限制
+
+* **fcitx5-rime 與 fcitx-rime 未測試；ibus-rime 只透過 IBus API 測試**（沒有圖形介面，只有一台機器：Ubuntu
+  24.04 aarch64、Xorg 上的 GNOME）。方案以 librime 1.10 編譯並逐鍵驅動，見 `docs/test-log.md`。
+* 套件管理員那一步只用假指令測試，沒有對照發行版的真實套件庫（apt 名稱已用 `apt-cache` 核對；
+  dnf、pacman 與 zypper 的名稱未驗證）。
+* 三代碼表 `tables/mscj3.cin` 是否與 Windows XP 的碼表完全相同：**未驗證**（只核對了 面、非、作、知/佑）。
+* 同碼字只靠詞頻決定（例如 雙/隻、佑/知、冇/有 在主倉庫的困難測試集中是錯的）。
+* 在空緩衝區中輸入的數字、符號與大寫字母會進入緩衝區，而不是直接送到應用程式
+  （承襲主倉庫的設計，見其文件）。
+* 只有區塊式的 `schema_list:` 會被自動編輯；行內的 `schema_list: [ ... ]` 或 `schema_list/+:` 補丁則不會動，
+  並附上操作說明。
+* x86_64 與其他發行版未測試（編譯測試只在 aarch64 上跑過）。
 
 * **fcitx5-rime and fcitx-rime were not tested; ibus-rime was tested through the IBus API only** (no GUI, one machine: Ubuntu
   24.04 aarch64, GNOME on Xorg). The schema was compiled and driven key by key with librime 1.10, see `docs/test-log.md`.
@@ -170,7 +294,14 @@ candidate selection came out exactly as written. The log shows `loaded plugin: o
   alone with instructions.
 * x86_64 and other distributions are untested (the compile test ran on aarch64 only).
 
-## Uninstall
+## Uninstall / 解除安裝
+
+指令見下方英文區塊。
+
+只移除安裝腳本寫入的檔案（列在 Rime 目錄中的 `.cangjie-fluency-linux.manifest`），保留所有
+`*.bak-*` 備份，且只有在 `default.custom.yaml` 是由安裝腳本建立、並且沒有被改動時才會移除它。若安裝腳本只是
+編輯了你既有的 `default.custom.yaml`，請自行刪掉 `- schema: cangjie3_fluency` 那一行（編輯前的副本是
+`default.custom.yaml.bak-<time>`）。透過套件管理員安裝的引擎套件不會被移除。之後請重新部署。
 
 ```sh
 bash install.sh --uninstall                 # or: --frontend ibus / --rime-dir DIR to pick the directory
@@ -181,7 +312,11 @@ Removes only what the installer wrote (listed in `.cangjie-fluency-linux.manifes
 edited your existing `default.custom.yaml`, delete the `- schema: cangjie3_fluency` line yourself (the pre-edit copy is
 `default.custom.yaml.bak-<time>`). Engine packages installed through the package manager are not removed. Then redeploy.
 
-## Tests and releases
+## Tests and releases / 測試與發行
+
+指令與其註解見下方英文區塊：`tests/test_install.sh` 離線執行，使用假的輸入法框架／curl／sudo，搭配真實碼表與模型，共 84 項檢查；
+`tests/compile_test.sh` 以倉庫自己的碼表／essay／模型實際用 librime 建置方案；`make-release.sh` 產生
+`dist/*-full.zip` 與 `*-slim.zip`（需要主倉庫的 checkout）。
 
 ```sh
 bash tests/test_install.sh          # offline, stubbed front end/curl/sudo, real tables + model, 84 checks
@@ -189,7 +324,18 @@ bash tests/compile_test.sh [DIR]    # real librime build of the schema with the 
 ./make-release.sh ~/projects/cangjie-fluency v0.4.0   # dist/*-full.zip and *-slim.zip (needs the main repo checkout)
 ```
 
-## Credits and licensing
+## Credits and licensing / 來源與授權
+
+* 朱邦復（Chu Bong-Foo），倉頡的發明人，已於 1982 年公開放棄專利權。
+* [rime/rime-cangjie](https://github.com/rime/rime-cangjie) 與 [rime/rime-quick](https://github.com/rime/rime-quick)（LGPL-3.0），
+  以及 eight04 的 `quick5_fluency` 原型，[rime/rime-quick#2](https://github.com/rime/rime-quick/issues/2)：本專案建立在這些想法之上。
+* [cangjie-system/rime-cangjie-integrated](https://github.com/cangjie-system/rime-cangjie-integrated)（MIT）：一套供 Rime 使用的
+  倉頡碼表集合，也是多數 Linux 使用者依循的指南；它是單純的碼表輸入法，本專案則加入整句模式。
+* 碼表、詞表與語言模型的來源與授權：見主倉庫的 `tables/README.md` 與 `data/README.md`。
+* 本倉庫：LGPL-3.0，見 `LICENSE`。
+
+引擎與方案文件：[githubhjs/cangjie-fluency](https://github.com/githubhjs/cangjie-fluency)
+（`weasel/README.zh-TW.md`、`weasel/docs/`）。
 
 * Chu Bong-Foo (朱邦復), inventor of Cangjie, publicly waived the patent in 1982.
 * [rime/rime-cangjie](https://github.com/rime/rime-cangjie) and [rime/rime-quick](https://github.com/rime/rime-quick) (LGPL-3.0), and

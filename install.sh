@@ -245,7 +245,7 @@ else
 fi
 
 # rime-data (default.yaml, luna_pinyin, ...) is needed by the schema (import_preset, reverse lookup)
-SHARED_DIRS="/usr/share/rime-data /usr/local/share/rime-data /usr/share/fcitx5/rime-data /run/current-system/sw/share/rime-data"
+SHARED_DIRS="${RIME_SHARED_DIRS:-/usr/share/rime-data /usr/local/share/rime-data /usr/share/fcitx5/rime-data /run/current-system/sw/share/rime-data}"   # RIME_SHARED_DIRS overrides (tests)
 shared_has() {   # shared_has FILE -> prints path of first match
   local d
   for d in "$RIME_DIR" $SHARED_DIRS; do
@@ -484,7 +484,7 @@ if [ "$DRY" -eq 1 ]; then
   say "dry run finished; nothing was changed."
 else
   say "Done. Switch to the schema with Ctrl+\` (or F4) and pick 'cangjie3_fluency'."
-  say "Check the language model: grep -h 'use grammar' in the Rime log (see README) should show $GRAM_NAME."
+  say "Check the language model: grep -h 'use grammar\\|failed to load grammar' in the Rime log (see README): want a 'use grammar: $GRAM_NAME' line and NO 'failed to load grammar' line (glog buffers: it can appear late)."
   [ "$WARNINGS" -eq 0 ] || say "finished with $WARNINGS warning(s), see above."
 fi
 

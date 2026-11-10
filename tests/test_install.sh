@@ -15,6 +15,7 @@ check() { local name="$1"; shift; if "$@"; then ok "$name"; else bad "$name"; fi
 
 # ---- fake mirror + stubbed front ends
 MIRROR="$T/mirror"; STUB="$T/stub"; mkdir -p "$MIRROR" "$STUB"
+export RIME_SHARED_DIRS="$T/no-system-rime-data"   # the result must not depend on what the machine has installed
 printf 'schema:\n  schema_id: cangjie3_fluency\n' >"$MIRROR/cangjie3_fluency.schema.yaml"
 printf -- '---\nname: cangjie3_fluency\n...\n' >"$MIRROR/cangjie3_fluency.dict.yaml"
 printf 'schema:\n  schema_id: cangjie5_fluency\n' >"$MIRROR/cangjie5_fluency.schema.yaml"

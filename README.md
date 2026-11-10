@@ -107,9 +107,11 @@ Careful: the `use grammar` line is also printed when the `.gram` file is missing
 `E... octagram.cc:180] failed to load grammar database: zh-hant-t-essay-bgw` right after it (seen in `docs/test-log.md`,
 section 2i). No `use grammar` line at all means the octagram plugin was not loaded.
 
-Where the logs are: librime writes `rime.<app>.<host>.<user>.log.INFO.<date>-<time>.<pid>` files (glog). For ibus-rime
-and fcitx5-rime the usual place is `/tmp` (app names `rime.ibus` / `rime.fcitx5`); this is from memory and
-**unverified** here, because no front end was running. If `/tmp` has nothing, run
+Where the logs are: librime writes `rime.<app>.<host>.<user>.log.INFO.<date>-<time>.<pid>` files (glog). For **ibus-rime
+this is verified**: `/tmp/rime.ibus.<host>.<user>.log.INFO.<date>-<time>.<pid>` (plus `rime.ibus.INFO` symlinks), Ubuntu 24.04. For
+fcitx5-rime (`rime.fcitx5`) it is **unverified**. glog buffers the INFO file, so the `use grammar` line can show up late: it was
+written at the first schema load but only appeared in the file once the engine had run for a while or exited. If you see nothing,
+wait about 30 s or stop the engine, then grep again. If `/tmp` has nothing, run
 `find / -name 'rime.*INFO*' -mmin -30 2>/dev/null` after switching to the schema. The same check on Windows is in the
 main repo's README.
 
@@ -126,12 +128,23 @@ main repo's README.
 * 3rd generation has no 難 (X) prefix for second characters of the same code (that is a 5th-generation feature).
 
 (Typing behaviour is the engine's; these notes come from the main repo's tests on Linux librime 1.10 and a Windows 11
-run of the 5th-gen variant. Nothing in this repo was tested inside a live Linux input method.)
+run of the 5th-gen variant, plus the live ibus test below.)
+
+**Live test, ibus-rime (2026-11-10).** Ubuntu 24.04 aarch64, IBus 1.5.29-rc2, ibus-rime 1.5.0, librime 1.10.0 with the Ubuntu
+`librime-plugin-octagram`, installed with this repo's one-line installer (`--frontend ibus`) and driven through the IBus API
+(`tests/ibus_live_test.py`: real key events into an input context bound to the `rime` engine, preedit, candidates and committed
+text read back). **10 of 10 cases passed**: 面 `mwyl`, 非 `lmyyy`, 作 `ohs`; `okr` offers 佑 then 知; 板橋 `dhedhkb`; 中午 `l oj`;
+and four whole sentences typed continuously with no space and no candidate selection came out exactly as written
+(我們明天中午去板橋吃飯, 今天天氣很好, 請問這個問題怎麼解決, 他說的話我不太明白; codes taken from the generated table).
+The log shows `loaded plugin: octagram`, `use grammar: zh-hant-t-essay-bgw`, no `failed to load grammar` and no `E` lines.
+It was **not** a GUI test (no text box, no candidate window): see the limits below.
 
 ## Known limits
 
-* **Not tested inside fcitx5, fcitx or ibus.** Tested: the installer (offline unit tests + real downloads) and the
-  schema compiled and driven key by key with librime 1.10 on Ubuntu 24.04 aarch64, see `docs/test-log.md`.
+* **fcitx5-rime and fcitx-rime were not tested; ibus-rime was tested through the IBus API only** (no GUI, no candidate window,
+  one machine: Ubuntu 24.04 aarch64 with GNOME on Xorg, ibus-daemon started by hand). The installer also ran for real
+  (offline unit tests + real downloads + a real run on that machine); the schema was also compiled and driven key by key
+  with librime 1.10, see `docs/test-log.md`.
 * Whether PIME's `mscj3.cin` is identical to Windows XP's table is **unverified** (only 面, 非, 作, 知/佑 were checked).
 * Same-code characters are decided by frequency only (e.g. 雙/隻, 佑/知, 冇/有 are wrong in the main repo's hard test set).
 * Digits, symbols and uppercase letters typed into an empty buffer land in the buffer instead of going straight to the

@@ -82,6 +82,8 @@ missing. A `slim` zip (installer + schema files + converter, about 29 KB) also e
 | `--ref TAG` | 從主倉庫的哪個標籤／分支下載缺少的檔案（預設 `v0.5.1`） |
 | `--with-cangjie5` | 一併安裝 `cangjie5_fluency`（以及主倉庫 `tables/` 中的五代碼表） |
 | `--no-model` | 跳過 41 MB 的語言模型 |
+| `--no-sweep` | 不安裝倉頡滑行輸入板（預設會安裝） |
+| `--pad-ref REF` | 從 githubhjs/cangjie-fuzzy-core 下載滑行板的版本標籤（預設 `v0.1.0`） |
 | `--no-deploy` | 只複製檔案 |
 | `--dry-run` | 只印出會做什麼，不變更也不下載任何東西 |
 | `--uninstall` | 只移除本安裝腳本建立的檔案（它會保存一份清單）；備份會保留 |
@@ -132,6 +134,8 @@ Options:
 | `--ref TAG` | which tag/branch of the main repo to download missing files from (default `v0.5.1`) |
 | `--with-cangjie5` | also install `cangjie5_fluency` (+ the 5th-generation table from the main repo's `tables/`) |
 | `--no-model` | skip the 41 MB language model |
+| `--no-sweep` | do not install the Cangjie Sweep Pad (installed by default) |
+| `--pad-ref REF` | release tag of githubhjs/cangjie-fuzzy-core to download the pad from (default `v0.1.0`) |
 | `--no-deploy` | copy files only |
 | `--dry-run` | print what would happen, change and download nothing |
 | `--uninstall` | remove only the files this installer created (it keeps a manifest); backups are kept |
@@ -468,3 +472,27 @@ bash install.sh
 The adjacent-key schema `cangjie3_fuzzy` (and `cangjie5_fuzzy` with Cangjie 5) is installed too, listed second; `cangjie3_fluency` stays the default. When one key is wrong and it is a physical neighbour (`yhmbv` for `yhmbc`) the intended character is offered as well, and exact candidates always come first.
 Options: `--no-fuzzy` skip it; `--fuzzy-range narrow|normal|wide` range; `--fuzzy-default` list it first.
 To make it the default schema (no Ctrl+` / F4 needed) use the separate project **cangjie-fuzzy-linux** (it contains the full cj*fluency too; one-line install). Evidence for the defaults: the DEFAULTS.md linked above.
+
+## Cangjie Sweep Pad / 倉頡滑行輸入板
+
+預設會安裝倉頡滑行輸入板（Cangjie Sweep Pad，來自 [githubhjs/cangjie-fuzzy-core](https://github.com/githubhjs/cangjie-fuzzy-core) 的 release 資產 `cangjie-sweep-pad-<PadRef>.zip`）：
+- 安裝位置：`~/.local/share/cangjie-sweep`（包含 `cangjie_sweep_pad.py`）。
+- 啟動程式：`~/.local/bin/cangjie-sweep-pad`。
+- 桌面選單項目：`~/.local/share/applications/cangjie-sweep-pad.desktop`（名稱：「Cangjie Sweep 倉頡滑行」，不自動啟動）。
+- 相依套件：Python 3.8+ 與 `python3-tk`，以及按鍵模擬程式（X11 使用 `xdotool`，Wayland 使用 `ydotool`）。
+- **Wayland 注意事項**：Wayland 下按鍵注入需要 `ydotool` 與 `/dev/uinput` 的寫入權限（例如執行 `ydotoold` 常駐程式或加入 `uinput` 群組）。在 Wayland 下點擊滑行板視窗時可能會暫時取得視窗焦點。
+- 安裝後會自動執行 `python3 cangjie_sweep_pad.py --self-check` 確認環境。
+- 選項：使用 `--no-sweep` 可跳過安裝滑行板；`--pad-ref REF` 可指定下載版本。執行 `--uninstall` 會一併移除滑行板資料夾、啟動器與桌面圖示。
+
+The Cangjie Sweep Pad is installed by default (a release asset of [githubhjs/cangjie-fuzzy-core](https://github.com/githubhjs/cangjie-fuzzy-core), `cangjie-sweep-pad-<PadRef>.zip`):
+- Install directory: `~/.local/share/cangjie-sweep` (contains `cangjie_sweep_pad.py`).
+- Launcher: `~/.local/bin/cangjie-sweep-pad`.
+- Desktop entry: `~/.local/share/applications/cangjie-sweep-pad.desktop` ("Cangjie Sweep 倉頡滑行", no autostart).
+- Dependencies: Python 3.8+ with `python3-tk`, plus a key injector (`xdotool` on X11, `ydotool` on Wayland).
+- **Wayland notice**: Wayland requires `ydotool` and write permissions to `/dev/uinput` (e.g. `ydotoold` daemon or `uinput` group). Note that on Wayland the pad window may take focus when clicked.
+- Runs `python3 cangjie_sweep_pad.py --self-check` after installation to verify the environment.
+- Options: pass `--no-sweep` to skip installing the pad; pass `--pad-ref REF` to specify a release tag. Running `--uninstall` removes the pad directory, launcher, and desktop entry.
+
+## Changelog / 更新紀錄
+
+- **v0.4.0** — Sweep Pad added; default on, `--no-sweep` to skip. / 新增倉頡滑行輸入板；預設安裝，加 `--no-sweep` 可略過。

@@ -17,6 +17,31 @@ check() { local name="$1"; shift; if "$@"; then ok "$name"; else bad "$name"; fi
 SRC="${CJF_MAIN_REPO:-/home/hjs/projects/cangjie-fluency}"
 STUB="$T/stub"; mkdir -p "$STUB"
 export RIME_SHARED_DIRS="$T/no-system-rime-data"   # the result must not depend on what the machine has installed
+export XDG_DATA_HOME="$T/data"
+export CJF_BIN_DIR="$T/bin"
+
+# Prepare mock sweep-pad zip in bundle
+SWEEP_STUB="$T/sweep_src"; mkdir -p "$SWEEP_STUB"
+cat >"$SWEEP_STUB/cangjie_sweep_pad.py" <<'PY'
+#!/usr/bin/env python3
+import sys
+if "--self-check" in sys.argv:
+    print("self-check ok")
+    sys.exit(0)
+print("cangjie sweep pad")
+PY
+chmod +x "$SWEEP_STUB/cangjie_sweep_pad.py"
+(cd "$SWEEP_STUB" && zip -q -r "$T/cangjie-sweep-pad.zip" cangjie_sweep_pad.py)
+sha256sum "$T/cangjie-sweep-pad.zip" | awk '{print $1}' > "$T/cangjie-sweep-pad.zip.sha256"
+
+BUNDLE="$T/bundle"; mkdir -p "$BUNDLE/sweep-pad"
+ln -s "$SRC/weasel" "$BUNDLE/weasel"
+ln -s "$SRC/tables" "$BUNDLE/tables"
+ln -s "$SRC/data" "$BUNDLE/data"
+ln -s "$SRC/tools" "$BUNDLE/tools"
+cp "$T/cangjie-sweep-pad.zip" "$BUNDLE/sweep-pad/cangjie-sweep-pad.zip"
+cp "$T/cangjie-sweep-pad.zip.sha256" "$BUNDLE/sweep-pad/cangjie-sweep-pad.zip.sha256"
+SRC="$BUNDLE"
 for c in fcitx5-remote fcitx-remote ibus; do
   printf '#!/bin/sh\necho "%s $*" >>"%s/calls.log"\n' "$c" "$T" >"$STUB/$c"
   chmod +x "$STUB/$c"
@@ -44,6 +69,10 @@ check "fresh: default.custom.yaml lists cangjie3_fluency first" \
 check "fresh: no backups" test "$(nbak "$D")" = 0
 check "fresh: deploy command ran" grep -q 'fcitx5-remote -r' "$T/calls.log"
 check "fresh: no .cjf-part left" test -z "$(find "$D" -name '*.cjf-part')"
+check "fresh: sweep pad installed" test -f "$T/data/cangjie-sweep/cangjie_sweep_pad.py"
+check "fresh: sweep launcher executable" test -x "$T/bin/cangjie-sweep-pad"
+check "fresh: sweep desktop entry exists" test -f "$T/data/applications/cangjie-sweep-pad.desktop"
+check "fresh: sweep self-check reported" has "Sweep Pad self-check passed"
 
 # ================================================================== identical re-run
 before="$(cd "$D" && find . -type f -printf '%p %s %T@\n' | sort | md5sum)"
@@ -171,6 +200,10 @@ after="$(cd "$d" && find . -type f | sort | xargs md5sum | md5sum)"
 check "dry-run: existing dir unchanged" test "$before" = "$after"
 check "dry-run: no deploy command" test ! -s "$T/calls.log"
 check "dry-run: says what it would do" has "DRY: would"
+check "dry-run: mentions Sweep Pad by default" has "DRY: would install Sweep Pad"
+d="$T/dry_nosweep"; run "$d" --dry-run --no-sweep
+check "dry-run --no-sweep: skips Sweep Pad" has "skipping Sweep Pad (--no-sweep)"
+check "dry-run --no-sweep: does not mention would install Sweep Pad" sh -c "! grep -q 'would install Sweep Pad' '$T/out'"
 
 # ================================================================== uninstall
 D="$T/r1"           # fresh install + one changed-file backup from above
@@ -183,6 +216,9 @@ done
 check "uninstall: backup kept" test "$(nbak "$D")" = 1
 check "uninstall: user's own file kept" test -f "$D/my-own.yaml"
 check "uninstall: manifest removed" test ! -e "$D/.cangjie-fluency-linux.manifest"
+check "uninstall: sweep dir removed" test ! -e "$T/data/cangjie-sweep"
+check "uninstall: sweep launcher removed" test ! -e "$T/bin/cangjie-sweep-pad"
+check "uninstall: sweep desktop entry removed" test ! -e "$T/data/applications/cangjie-sweep-pad.desktop"
 
 # uninstall must keep a default.custom.yaml that was merely edited, and files it did not create
 d="$T/m_lf"; echo "# pre-existing" >"$d/mine.yaml"
@@ -230,7 +266,7 @@ env -u RIME_DIR -u CJF_SRC_DIR PATH="$STUB:$PATH" bash "$INSTALL" --no-deps --fr
 check "online without bundle: curl called with the main repo raw URL" grep -q 'raw.githubusercontent.com/githubhjs/cangjie-fluency/main/weasel/cangjie3_fluency.schema.yaml' "$NETLOG"
 check "online without bundle: only the main repo is contacted" test -z "$(grep -v 'githubhjs/cangjie-fluency' "$NETLOG")"
 # damaged table: SHA-256 mismatch must stop the install before anything is converted
-BAD="$T/badbundle"; mkdir -p "$BAD"; cp -r "$SRC/weasel" "$SRC/tools" "$SRC/data" "$BAD/"; mkdir -p "$BAD/tables"; cp "$SRC/tables/mscj3.cin" "$BAD/tables/"; echo 'x 日' >>"$BAD/tables/mscj3.cin"
+BAD="$T/badbundle"; mkdir -p "$BAD"; cp -r "$SRC/weasel" "$SRC/tools" "$SRC/data" "$BAD/"; mkdir -p "$BAD/tables"; cp "$SRC/tables/mscj3.cin" "$BAD/tables/"; echo 'x 日' >>"$BAD/tables/mscj3.cin"; ln -s "$BUNDLE/sweep-pad" "$BAD/sweep-pad"
 d="$T/badhash"
 env -u RIME_DIR CJF_SRC_DIR="$BAD" PATH="$STUB:$PATH" bash "$INSTALL" --offline --no-deps --no-model --frontend fcitx5 --rime-dir "$d" >"$T/out" 2>&1; rc=$?
 check "bad table hash: install stops" test "$rc" -ne 0
@@ -256,6 +292,27 @@ check "deps: apt-get install of ibus-rime via sudo" grep -q '^sudo apt-get insta
 env -u RIME_DIR CJF_SRC_DIR="$SRC" CJF_ENGINE_ROOTS="$T/none" RIME_SHARED_DIRS="$T/none" PATH="$STUB:$PATH" bash "$INSTALL" --no-deps --frontend ibus --rime-dir "$d" --no-model --no-deploy >"$T/out" 2>&1
 check "--no-deps: package manager not called" test ! -s "$T/pm.log"
 rm -f "$STUB/curl" "$STUB/wget" "$STUB/apt-get" "$STUB/sudo"
+
+# ================================================================== sweep pad: hash mismatch & offline
+FAKE_PAD="$T/fake_pad_rel"; mkdir -p "$FAKE_PAD"
+echo "corrupt data" > "$FAKE_PAD/cangjie-sweep-pad-v0.2.0.zip"
+echo "0000000000000000000000000000000000000000000000000000000000000000  cangjie-sweep-pad-v0.2.0.zip" > "$FAKE_PAD/cangjie-sweep-pad-v0.2.0.zip.sha256"
+d="$T/bad_pad_hash"
+CJF_PAD_URL_BASE="$FAKE_PAD" env -u CJF_SRC_DIR -u RIME_DIR PATH="$STUB:$PATH" \
+  bash "$INSTALL" --frontend fcitx5 --rime-dir "$d" --no-deps --no-model >"$T/out" 2>&1; rc=$?
+check "sweep pad bad hash: install stops" test "$rc" -ne 0
+check "sweep pad bad hash: says SHA-256 mismatch" has "SHA-256 mismatch"
+
+NO_PAD_BUNDLE="$T/bundle_nopad"; mkdir -p "$NO_PAD_BUNDLE"
+ln -s "$BUNDLE/weasel" "$NO_PAD_BUNDLE/weasel"
+ln -s "$BUNDLE/tables" "$NO_PAD_BUNDLE/tables"
+ln -s "$BUNDLE/data" "$NO_PAD_BUNDLE/data"
+ln -s "$BUNDLE/tools" "$NO_PAD_BUNDLE/tools"
+d="$T/offline_nopad"
+env -u RIME_DIR CJF_SRC_DIR="$NO_PAD_BUNDLE" PATH="$STUB:$PATH" \
+  bash "$INSTALL" --offline --no-deps --frontend fcitx5 --rime-dir "$d" --no-model >"$T/out" 2>&1; rc=$?
+check "offline without sweep-pad in bundle stops" test "$rc" -ne 0
+check "offline without sweep-pad message" has "sweep-pad/cangjie-sweep-pad.zip is missing"
 
 echo
 echo "passed: $PASS  failed: $FAIL"

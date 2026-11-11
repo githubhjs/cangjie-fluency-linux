@@ -20,6 +20,8 @@ main() {
 # ----------------------------------------------------------------------------------------- settings
 REF="${CJF_REF:-v0.5.1}"
 MAIN_REPO="githubhjs/cangjie-fluency"
+PAD_REPO="githubhjs/cangjie-fuzzy-core"
+PAD_REF="${CJF_PAD_REF:-v0.2.0}"
 GRAM_NAME="zh-hant-t-essay-bgw.gram"
 GRAM_SIZE=41415724
 GRAM_SHA="0488ebd6688f900a39200f2b794f2f99bcbf1e8fc27280ae4a2324b08b1559c1"
@@ -36,6 +38,7 @@ NO_FUZZY=0
 FUZZY_RANGE=normal
 FUZZY_DEFAULT=0
 NO_MODEL=0
+NO_SWEEP=0
 NO_DEPLOY=0
 NO_DEPS=0
 OFFLINE=0
@@ -69,6 +72,9 @@ Usage: install.sh [options]
   --fuzzy-default                     make the typo-tolerant schema the FIRST (default) one instead of cangjie3_fluency
   --fuzzy-range narrow|normal|wide    how far a wrong key may be from the right one: narrow = left/right only,
                                       normal (default) = also the diagonal neighbours, wide = one more ring
+  --no-sweep                          do not install the Cangjie Sweep Pad (tkinter gesture input helper)
+  --pad-ref REF                       release tag of githubhjs/cangjie-fuzzy-core to download
+                                      the Sweep Pad from (default: v0.2.0, env CJF_PAD_REF)
   --no-deploy                         copy files only, do not restart/redeploy the input method
   --dry-run                           say what would be done, change nothing, download nothing
   --uninstall                         remove the files this installer created (backups are kept)
@@ -95,6 +101,9 @@ EOF
   --fuzzy-default                     把鄰鍵容錯方案排在第一個（預設），而不是 cangjie3_fluency
   --fuzzy-range narrow|normal|wide    打錯的鍵離正確的鍵多遠算數：narrow = 只有左右相鄰，
                                       normal（預設）= 再加斜向相鄰，wide = 再多一圈
+  --no-sweep                          不安裝倉頡滑行輸入板（tkinter 筆畫/滑行輸入輔助工具）
+  --pad-ref REF                       從 githubhjs/cangjie-fuzzy-core 下載滑行板時使用的
+                                      標籤/版本（預設：v0.2.0，環境變數 CJF_PAD_REF）
   --no-deploy                         只複製檔案，不重新啟動/重新部署輸入法
   --dry-run                           只說明會做什麼，不更動、不下載
   --uninstall                         移除本安裝程式建立的檔案（備份檔會保留）
@@ -121,6 +130,9 @@ while [ $# -gt 0 ]; do
     --no-fuzzy)       NO_FUZZY=1; shift ;;
     --fuzzy-default)  FUZZY_DEFAULT=1; shift ;;
     --fuzzy-range)    FUZZY_RANGE="${2:-}"; case "$FUZZY_RANGE" in narrow|normal|wide) ;; *) die "--fuzzy-range must be narrow, normal or wide" "--fuzzy-range 只能是 narrow、normal 或 wide" ;; esac; shift 2 ;;
+    --no-sweep)       NO_SWEEP=1; shift ;;
+    --pad-ref)        [ $# -ge 2 ] || die "--pad-ref needs a value" "--pad-ref 需要一個值"; PAD_REF="$2"; shift 2 ;;
+    --pad-ref=*)      PAD_REF="${1#*=}"; shift ;;
     --no-deploy)      NO_DEPLOY=1; shift ;;
     --dry-run)        DRY=1; shift ;;
     --uninstall)      UNINSTALL=1; shift ;;
@@ -131,6 +143,7 @@ done
 
 case "$FRONTEND" in auto|fcitx5|fcitx|ibus|fcitx5-flatpak) ;; *) die "--frontend must be fcitx5, fcitx, ibus or auto" "--frontend 必須是 fcitx5、fcitx、ibus 或 auto" ;; esac
 case "$REF" in *[!A-Za-z0-9._/-]*|"") die "--ref contains unexpected characters" "--ref 含有不允許的字元" ;; esac
+case "$PAD_REF" in *[!A-Za-z0-9._/-]*|"") die "--pad-ref contains unexpected characters" "--pad-ref 含有不允許的字元" ;; esac
 [ "$(id -u)" -ne 0 ] || warn "running as root: the files would go into root's home. Run as your normal user." "目前以 root 身分執行：檔案會放進 root 的家目錄。請改用一般使用者執行。"
 
 # ----------------------------------------------------------------------------------------- front end + directory
@@ -140,6 +153,11 @@ DIR_FCITX5="$DATA_HOME/fcitx5/rime"
 DIR_FCITX5_FLATPAK="$HOME/.var/app/org.fcitx.Fcitx5/data/fcitx5/rime"   # unverified: not tested with Flatpak
 DIR_FCITX="$CONF_HOME/fcitx/rime"
 DIR_IBUS="$CONF_HOME/ibus/rime"
+SWEEP_DIR="${CJF_SWEEP_DIR:-$DATA_HOME/cangjie-sweep}"
+BIN_DIR="${CJF_BIN_DIR:-$HOME/.local/bin}"
+APP_DIR="${CJF_APP_DIR:-$DATA_HOME/applications}"
+SWEEP_LAUNCHER="$BIN_DIR/cangjie-sweep-pad"
+SWEEP_DESKTOP="$APP_DIR/cangjie-sweep-pad.desktop"
 
 detect_frontend() {
   # 1. a running daemon wins, 2. an existing rime directory, 3. an installed program
@@ -218,7 +236,7 @@ fetch() {   # fetch URL DEST   (never called with --offline)
 
 manifest_add() {   # manifest_add LINE  (unique lines only)
   [ "$DRY" -eq 0 ] || return 0
-  touch "$MANIFEST"
+  [ -e "$MANIFEST" ] || : >"$MANIFEST"
   grep -qxF -- "$1" "$MANIFEST" 2>/dev/null || printf '%s\n' "$1" >>"$MANIFEST"
 }
 
@@ -242,12 +260,16 @@ place_file() {
 # ----------------------------------------------------------------------------------------- uninstall
 if [ "$UNINSTALL" -eq 1 ]; then
   [ -f "$MANIFEST" ] || { say "nothing to uninstall: no $MANIFEST_NAME in $RIME_DIR" "沒有東西可解除安裝：$RIME_DIR 裡沒有 $MANIFEST_NAME"; exit 0; }
-  created_dc=0; merged_dc=0
+  created_dc=0; merged_dc=0; sweep_installed=0; sweep_dir=""; sweep_launcher=""; sweep_desktop=""
   while IFS= read -r line; do
     case "$line" in
       "") ;;
       @created-default.custom.yaml) created_dc=1 ;;
       @merged-default.custom.yaml)  merged_dc=1 ;;
+      @sweep-installed)             sweep_installed=1 ;;
+      @sweep-dir\ *)                sweep_dir="${line#@sweep-dir }" ;;
+      @sweep-launcher\ *)           sweep_launcher="${line#@sweep-launcher }" ;;
+      @sweep-desktop\ *)            sweep_desktop="${line#@sweep-desktop }" ;;
       */*|..*) warn "ignoring suspicious manifest entry: $line" "略過可疑的清單項目：$line" ;;
       *)
         if [ -f "$RIME_DIR/$line" ]; then
@@ -255,6 +277,21 @@ if [ "$UNINSTALL" -eq 1 ]; then
         fi ;;
     esac
   done <"$MANIFEST"
+  if [ "$sweep_installed" -eq 1 ]; then
+    s_dir="${sweep_dir:-$SWEEP_DIR}"
+    s_launcher="${sweep_launcher:-$SWEEP_LAUNCHER}"
+    s_desktop="${sweep_desktop:-$SWEEP_DESKTOP}"
+    if [ "$DRY" -eq 1 ]; then
+      say "DRY: would remove Sweep Pad directory: $s_dir" "試跑：將會移除滑行板資料夾：$s_dir"
+      say "DRY: would remove Sweep Pad launcher: $s_launcher" "試跑：將會移除滑行板啟動器：$s_launcher"
+      say "DRY: would remove Sweep Pad desktop entry: $s_desktop" "試跑：將會移除滑行板桌面項目：$s_desktop"
+    else
+      [ ! -d "$s_dir" ] || rm -rf "$s_dir"
+      [ ! -f "$s_launcher" ] || rm -f "$s_launcher"
+      [ ! -f "$s_desktop" ] || rm -f "$s_desktop"
+      say "removed Sweep Pad ($s_dir, $s_launcher, $s_desktop)" "已移除滑行板（$s_dir、$s_launcher、$s_desktop）"
+    fi
+  fi
   dc="$RIME_DIR/default.custom.yaml"
   if [ "$created_dc" -eq 1 ] && [ -f "$dc" ]; then
     if grep -q '^# created by cangjie-fluency-linux' "$dc"; then
@@ -309,33 +346,63 @@ engine_installed() {   # engine_installed ibus|fcitx5
 
 install_deps() {
   local want_engine=0 pm pkgs="" cmd
-  case "$FRONTEND" in none|fcitx|fcitx5-flatpak) say "front end '$FRONTEND': not installing engine packages automatically." "輸入法框架「$FRONTEND」：不自動安裝引擎套件。"; return 0 ;; esac
-  case "$FRONTEND" in ibus|fcitx5) engine_installed "$FRONTEND" || want_engine=1 ;; esac
+  if [ "$FRONTEND" = ibus ] || [ "$FRONTEND" = fcitx5 ]; then
+    engine_installed "$FRONTEND" || want_engine=1
+  elif [ "$FRONTEND" = none ] || [ "$FRONTEND" = fcitx ] || [ "$FRONTEND" = fcitx5-flatpak ]; then
+    say "front end '$FRONTEND': not installing engine packages automatically." "輸入法框架「$FRONTEND」：不自動安裝引擎套件。"
+  fi
   local want_plugin=0
   if [ "$NO_MODEL" -eq 0 ] && ! find_octagram >/dev/null 2>&1; then want_plugin=1; fi
-  [ "$want_engine" -eq 1 ] || [ "$want_plugin" -eq 1 ] || { say "engine packages already present." "引擎套件已安裝。"; return 0; }
+
+  local want_tk=0 want_injector=0 is_wayland=0 injector="xdotool"
+  if [ "$NO_SWEEP" -eq 0 ]; then
+    python3 -c "import tkinter" >/dev/null 2>&1 || want_tk=1
+    case "${XDG_SESSION_TYPE:-}" in wayland|Wayland) is_wayland=1; injector="ydotool" ;; esac
+    have "$injector" || want_injector=1
+    if [ "$is_wayland" -eq 1 ]; then
+      warn "Wayland session detected: key injection requires ydotool and write permissions to /dev/uinput (ydotoold daemon or uinput group). Note that on Wayland the pad window may take focus when clicked." "偵測到 Wayland 工作階段：按鍵模擬需要 ydotool 以及 /dev/uinput 的寫入權限（ydotoold 常駐程式或 uinput 群組）。另請注意在 Wayland 下點擊滑行板視窗可能會取得焦點。"
+    fi
+  fi
+
+  [ "$want_engine" -eq 1 ] || [ "$want_plugin" -eq 1 ] || [ "$want_tk" -eq 1 ] || [ "$want_injector" -eq 1 ] || { say "engine and dependency packages already present." "引擎與相依套件已安裝。"; return 0; }
+
   if have apt-get; then
     pm=apt                                                    # package names checked with apt-cache on Ubuntu 24.04
     [ "$want_engine" -eq 0 ] || { [ "$FRONTEND" = ibus ] && pkgs="ibus-rime" || pkgs="fcitx5-rime"; }
     [ "$want_plugin" -eq 0 ] || pkgs="$pkgs librime-plugin-octagram"
+    [ "$want_tk" -eq 0 ] || pkgs="$pkgs python3-tk"
+    [ "$want_injector" -eq 0 ] || pkgs="$pkgs $injector"
     cmd="apt-get install -y $pkgs"
   elif have dnf; then
     pm=dnf                                                    # unverified names
     [ "$want_engine" -eq 0 ] || { [ "$FRONTEND" = ibus ] && pkgs="ibus-rime" || pkgs="fcitx5-rime"; }
     [ "$want_plugin" -eq 0 ] || pkgs="$pkgs librime-octagram"
+    [ "$want_tk" -eq 0 ] || pkgs="$pkgs python3-tkinter"
+    [ "$want_injector" -eq 0 ] || pkgs="$pkgs $injector"
     cmd="dnf install -y $pkgs"
   elif have pacman; then
     pm=pacman                                                 # unverified names; librime ships the octagram plugin
     [ "$want_engine" -eq 0 ] || { [ "$FRONTEND" = ibus ] && pkgs="ibus-rime" || pkgs="fcitx5-rime"; }
-    [ -n "$pkgs" ] || { say "pacman: the librime package already provides the octagram plugin." "pacman：librime 套件已內含 octagram 外掛。"; return 0; }
+    [ "$want_tk" -eq 0 ] || pkgs="$pkgs tk"
+    [ "$want_injector" -eq 0 ] || pkgs="$pkgs $injector"
+    [ -n "$pkgs" ] || { say "pacman: the librime package already provides the octagram plugin and other deps are present." "pacman：librime 套件已內含 octagram 外掛且其他相依套件皆已存在。"; return 0; }
     cmd="pacman -S --needed --noconfirm $pkgs"
   elif have zypper; then
     pm=zypper                                                 # unverified names
     [ "$want_engine" -eq 0 ] || { [ "$FRONTEND" = ibus ] && pkgs="ibus-rime" || pkgs="fcitx5-rime"; }
     [ "$want_plugin" -eq 0 ] || pkgs="$pkgs librime-octagram"
+    [ "$want_tk" -eq 0 ] || pkgs="$pkgs python3-tk"
+    [ "$want_injector" -eq 0 ] || pkgs="$pkgs $injector"
     cmd="zypper --non-interactive install $pkgs"
   else
-    warn "no known package manager (apt/dnf/pacman/zypper); install the Rime engine and librime-octagram yourself." "找不到已知的套件管理員（apt/dnf/pacman/zypper）；請自行安裝 Rime 引擎與 librime-octagram。"
+    warn "no known package manager (apt/dnf/pacman/zypper); install dependencies yourself." "找不到已知的套件管理員（apt/dnf/pacman/zypper）；請自行安裝相依套件。"
+    if [ "$want_tk" -eq 1 ] || [ "$want_injector" -eq 1 ]; then
+      local missing_sw=""
+      [ "$want_tk" -eq 0 ] || missing_sw="python3-tk"
+      [ "$want_injector" -eq 0 ] || missing_sw="$missing_sw $injector"
+      missing_sw="${missing_sw# }"
+      warn "Sweep Pad dependencies missing: $missing_sw. On Debian/Ubuntu run: sudo apt install $missing_sw" "缺少滑行板相依套件：$missing_sw。Debian/Ubuntu 請執行：sudo apt install $missing_sw"
+    fi
     return 0
   fi
   pkgs="${pkgs# }"
@@ -350,7 +417,27 @@ install_deps() {
     warn "sudo not found. Run as root: $cmd" "找不到 sudo。請以 root 執行：$cmd"
   fi
 }
-if [ "$NO_DEPS" -eq 1 ]; then say "--no-deps: not installing engine packages." "--no-deps：不安裝引擎套件。"; else install_deps; fi
+if [ "$NO_DEPS" -eq 1 ]; then
+  say "--no-deps: not installing engine packages." "--no-deps：不安裝引擎套件。";
+  if [ "$NO_SWEEP" -eq 0 ]; then
+    local_injector="xdotool"
+    case "${XDG_SESSION_TYPE:-}" in wayland|Wayland) local_injector="ydotool" ;; esac
+    missing_deps=""
+    python3 -c "import tkinter" >/dev/null 2>&1 || missing_deps="python3-tk"
+    have "$local_injector" || missing_deps="$missing_deps $local_injector"
+    missing_deps="${missing_deps# }"
+    if [ -n "$missing_deps" ]; then
+      warn "Sweep Pad dependencies missing ($missing_deps). Install with package manager: sudo apt install $missing_deps" "缺少滑行板相依套件（$missing_deps）。請用套件管理員安裝：sudo apt install $missing_deps"
+    fi
+    case "${XDG_SESSION_TYPE:-}" in
+      wayland|Wayland)
+        warn "Wayland session detected: key injection requires ydotool and write permissions to /dev/uinput (ydotoold daemon or uinput group). Note that on Wayland the pad window may take focus when clicked." "偵測到 Wayland 工作階段：按鍵模擬需要 ydotool 以及 /dev/uinput 的寫入權限（ydotoold 常駐程式或 uinput 群組）。另請注意在 Wayland 下點擊滑行板視窗可能會取得焦點。"
+        ;;
+    esac
+  fi
+else
+  install_deps
+fi
 
 if OCT="$(find_octagram)"; then
   say "octagram plugin found: $OCT" "找到 octagram 外掛：$OCT"
@@ -629,6 +716,136 @@ deploy() {
   esac
 }
 deploy
+install_sweep_pad() {
+  [ "$NO_SWEEP" -eq 0 ] || { say "skipping Sweep Pad (--no-sweep)" "略過倉頡滑行輸入板（--no-sweep）"; return 0; }
+  if [ "$DRY" -eq 1 ]; then
+    say "DRY: would install Sweep Pad $PAD_REF to $SWEEP_DIR" "試跑：將會安裝倉頡滑行輸入板 $PAD_REF 到 $SWEEP_DIR"
+    say "DRY: would create launcher $SWEEP_LAUNCHER" "試跑：將會建立啟動器 $SWEEP_LAUNCHER"
+    say "DRY: would create desktop entry $SWEEP_DESKTOP" "試跑：將會建立桌面項目 $SWEEP_DESKTOP"
+    say "DRY: would run: python3 $SWEEP_DIR/cangjie_sweep_pad.py --self-check" "試跑：將會執行：python3 $SWEEP_DIR/cangjie_sweep_pad.py --self-check"
+    return 0
+  fi
+
+  local zip_file="$WORK/cangjie-sweep-pad.zip"
+  local sha_file="$WORK/cangjie-sweep-pad.zip.sha256"
+  local expected_sha=""
+  local pad_bundle_zip="" pad_bundle_sha=""
+
+  if [ -n "$SRC_LOCAL" ] && [ -f "$SRC_LOCAL/sweep-pad/cangjie-sweep-pad.zip" ]; then
+    pad_bundle_zip="$SRC_LOCAL/sweep-pad/cangjie-sweep-pad.zip"
+    if [ -f "$SRC_LOCAL/sweep-pad/cangjie-sweep-pad.zip.sha256" ]; then
+      pad_bundle_sha="$SRC_LOCAL/sweep-pad/cangjie-sweep-pad.zip.sha256"
+    fi
+  fi
+
+  if [ -n "$pad_bundle_zip" ]; then
+    say "using Sweep Pad from bundle: $pad_bundle_zip" "使用完整包隨附的滑行板：$pad_bundle_zip"
+    cp "$pad_bundle_zip" "$zip_file"
+    if [ -n "$pad_bundle_sha" ]; then
+      expected_sha="$(awk '{print $1}' "$pad_bundle_sha")"
+    fi
+  elif [ "$OFFLINE" -eq 1 ]; then
+    die "--offline: sweep-pad/cangjie-sweep-pad.zip is missing from the bundle" "--offline：完整包裡缺少 sweep-pad/cangjie-sweep-pad.zip"
+  else
+    local pad_base="${CJF_PAD_URL_BASE:-https://github.com/$PAD_REPO/releases/download/$PAD_REF}"
+    local pad_zip_name="cangjie-sweep-pad-$PAD_REF.zip"
+    local pad_sha_name="cangjie-sweep-pad-$PAD_REF.zip.sha256"
+    say "downloading Sweep Pad $PAD_REF from $pad_base" "下載倉頡滑行輸入板 $PAD_REF：$pad_base"
+    if [ -d "$pad_base" ]; then
+      [ -f "$pad_base/$pad_zip_name" ] || die "$pad_base/$pad_zip_name not found" "找不到 $pad_base/$pad_zip_name"
+      [ -f "$pad_base/$pad_sha_name" ] || die "$pad_base/$pad_sha_name not found" "找不到 $pad_base/$pad_sha_name"
+      cp "$pad_base/$pad_zip_name" "$zip_file"
+      cp "$pad_base/$pad_sha_name" "$sha_file"
+    else
+      fetch "$pad_base/$pad_zip_name" "$zip_file" || die "failed to download $pad_base/$pad_zip_name" "下載失敗：$pad_base/$pad_zip_name"
+      fetch "$pad_base/$pad_sha_name" "$sha_file" || die "failed to download $pad_base/$pad_sha_name" "下載失敗：$pad_base/$pad_sha_name"
+    fi
+    expected_sha="$(awk '{print $1}' "$sha_file")"
+  fi
+
+  if [ -n "$expected_sha" ]; then
+    verify_sha "$zip_file" "$expected_sha" "cangjie-sweep-pad ($PAD_REF)"
+  fi
+
+  local extract_dir="$WORK/sweep_extracted"
+  mkdir -p "$extract_dir"
+  if have unzip; then
+    unzip -q -o "$zip_file" -d "$extract_dir" || die "failed to extract $zip_file" "解壓縮失敗：$zip_file"
+  else
+    python3 -m zipfile -e "$zip_file" "$extract_dir" || die "failed to extract $zip_file" "解壓縮失敗：$zip_file"
+  fi
+
+  [ -f "$extract_dir/cangjie_sweep_pad.py" ] || die "cangjie_sweep_pad.py not found in zip" "zip 內找不到 cangjie_sweep_pad.py"
+
+  mkdir -p "$SWEEP_DIR" "$BIN_DIR" "$APP_DIR"
+
+  local dest_py="$SWEEP_DIR/cangjie_sweep_pad.py"
+  if [ -f "$dest_py" ] && cmp -s "$extract_dir/cangjie_sweep_pad.py" "$dest_py"; then
+    say "up to date: $dest_py" "已是最新：$dest_py"
+  else
+    if [ -f "$dest_py" ]; then
+      cp -p "$dest_py" "$dest_py.bak-$STAMP"
+      say "backed up cangjie_sweep_pad.py -> cangjie_sweep_pad.py.bak-$STAMP" "已備份 cangjie_sweep_pad.py -> cangjie_sweep_pad.py.bak-$STAMP"
+    fi
+    cp -p "$extract_dir/cangjie_sweep_pad.py" "$dest_py"
+    chmod +x "$dest_py"
+    say "installed: $dest_py" "已安裝：$dest_py"
+  fi
+  for extra in "$extract_dir"/*; do
+    [ -e "$extra" ] || continue
+    [ "$(basename "$extra")" != "cangjie_sweep_pad.py" ] || continue
+    cp -rp "$extra" "$SWEEP_DIR/"
+  done
+
+  # Launcher: ~/.local/bin/cangjie-sweep-pad
+  local tmp_launcher="$WORK/launcher.sh"
+  cat >"$tmp_launcher" <<EOF
+#!/bin/sh
+exec python3 "$dest_py" "\$@"
+EOF
+  if [ -f "$SWEEP_LAUNCHER" ] && cmp -s "$tmp_launcher" "$SWEEP_LAUNCHER"; then
+    say "up to date: $SWEEP_LAUNCHER" "已是最新：$SWEEP_LAUNCHER"
+  else
+    cp "$tmp_launcher" "$SWEEP_LAUNCHER"
+    chmod +x "$SWEEP_LAUNCHER"
+    say "installed launcher: $SWEEP_LAUNCHER" "已安裝啟動器：$SWEEP_LAUNCHER"
+  fi
+
+  # Desktop entry: ~/.local/share/applications/cangjie-sweep-pad.desktop
+  local tmp_desktop="$WORK/app.desktop"
+  cat >"$tmp_desktop" <<EOF
+[Desktop Entry]
+Type=Application
+Name=Cangjie Sweep 倉頡滑行
+Comment=Cangjie Sweep Pad / 倉頡滑行輸入板
+Exec=$SWEEP_LAUNCHER
+Terminal=false
+Categories=Utility;InputMethod;
+EOF
+  if [ -f "$SWEEP_DESKTOP" ] && cmp -s "$tmp_desktop" "$SWEEP_DESKTOP"; then
+    say "up to date: $SWEEP_DESKTOP" "已是最新：$SWEEP_DESKTOP"
+  else
+    cp "$tmp_desktop" "$SWEEP_DESKTOP"
+    chmod +x "$SWEEP_DESKTOP" 2>/dev/null || true
+    say "installed desktop entry: $SWEEP_DESKTOP" "已安裝桌面項目：$SWEEP_DESKTOP"
+  fi
+
+  manifest_add "@sweep-installed"
+  manifest_add "@sweep-dir $SWEEP_DIR"
+  manifest_add "@sweep-launcher $SWEEP_LAUNCHER"
+  manifest_add "@sweep-desktop $SWEEP_DESKTOP"
+
+  # Run self-check
+  if python3 "$dest_py" --self-check >"$WORK/self-check.out" 2>&1; then
+    SWEEP_CHECK_OK=1
+    say "Sweep Pad self-check passed." "倉頡滑行輸入板自我檢查通過。"
+  else
+    SWEEP_CHECK_OK=0
+    warn "Sweep Pad self-check reported warnings or failed: $(tr '\n' ' ' < "$WORK/self-check.out")" "滑行板自我檢查有警告或失敗：$(tr '\n' ' ' < "$WORK/self-check.out")"
+  fi
+}
+SWEEP_CHECK_OK=0
+install_sweep_pad
 
 # ----------------------------------------------------------------------------------------- finish
 if [ "$DRY" -eq 1 ]; then
@@ -640,6 +857,13 @@ else
     say "Done. Switch to the schema with Ctrl+\` (or F4) and pick 'cangjie3_fluency'." "完成。按 Ctrl+\`（或 F4）切換方案，選「cangjie3_fluency」。"
   fi
   say "Check the language model: grep -h 'use grammar\\|failed to load grammar' in the Rime log (see README): want a 'use grammar: $GRAM_NAME' line and NO 'failed to load grammar' line (glog buffers: it can appear late)." "檢查語言模型：在 Rime 記錄檔裡 grep -h 'use grammar\\|failed to load grammar'（見 README）：要看到「use grammar: $GRAM_NAME」那一行，且沒有「failed to load grammar」那一行（glog 有緩衝：可能較晚才出現）。"
+  if [ "$NO_SWEEP" -eq 0 ]; then
+    if [ "$SWEEP_CHECK_OK" -eq 1 ]; then
+      say "Sweep Pad: ready at $SWEEP_DIR (launcher: $SWEEP_LAUNCHER). Self-check: passed." "倉頡滑行輸入板：已就緒於 $SWEEP_DIR（啟動器：$SWEEP_LAUNCHER）。自我檢查：通過。"
+    else
+      say "Sweep Pad: installed at $SWEEP_DIR (launcher: $SWEEP_LAUNCHER). Self-check had issues (see warnings above)." "倉頡滑行輸入板：已安裝於 $SWEEP_DIR（啟動器：$SWEEP_LAUNCHER）。自我檢查有異常（見上方警告）。"
+    fi
+  fi
   [ "$WARNINGS" -eq 0 ] || say "finished with $WARNINGS warning(s), see above." "完成，但有 $WARNINGS 個警告，請看上方訊息。"
 fi
 

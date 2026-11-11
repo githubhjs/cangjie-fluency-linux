@@ -28,7 +28,7 @@ for f in tables/mscj3.cin tables/cangjie5.base.dict.yaml data/essay.txt data/zh-
 
 # fetch and verify Sweep Pad for the full offline bundle
 PAD_REF="$(sed -n 's/^PAD_REF="\${CJF_PAD_REF:-\(v[0-9.]*\)}".*/\1/p' "$HERE/install.sh" | head -n1)"
-PAD_REF="${CJF_PAD_REF:-${PAD_REF:-v0.2.0}}"
+PAD_REF="${CJF_PAD_REF:-${PAD_REF:-v0.3.0}}"
 PAD_STAGE="$STAGE/sweep-pad"
 mkdir -p "$PAD_STAGE"
 PAD_URL_BASE="${CJF_PAD_URL_BASE:-https://github.com/githubhjs/cangjie-fuzzy-core/releases/download/$PAD_REF}"

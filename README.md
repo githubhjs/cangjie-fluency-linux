@@ -135,7 +135,7 @@ Options:
 | `--with-cangjie5` | also install `cangjie5_fluency` (+ the 5th-generation table from the main repo's `tables/`) |
 | `--no-model` | skip the 41 MB language model |
 | `--no-sweep` | do not install the Cangjie Sweep Pad (installed by default) |
-| `--pad-ref REF` | release tag of githubhjs/cangjie-fuzzy-core to download the pad from (default `v0.4.1`) |
+| `--pad-ref REF` | release tag of githubhjs/cangjie-fuzzy-core to download the pad from (default `v0.5.0`) |
 | `--no-deploy` | copy files only |
 | `--dry-run` | print what would happen, change and download nothing |
 | `--uninstall` | remove only the files this installer created (it keeps a manifest); backups are kept |
@@ -495,6 +495,7 @@ The Cangjie Sweep Pad is installed by default (a release asset of [githubhjs/can
 
 ## Changelog / 更新紀錄
 
+- **v0.4.4** — Sweep Pad v0.5.0: optional `--mode commit` types the clicked candidate (Linux/macOS), default unchanged. / 滑行輸入板 v0.5.0：可選的 `--mode commit` 會直接輸入點選的候選字（Linux/macOS），預設行為不變。
 - **v0.4.3** — Sweep Pad v0.4.1: candidate row no longer resizes, the sweep trail stays visible. / 滑行輸入板 v0.4.1：候選列不再變高，滑行軌跡不會消失。
 - **v0.4.2** — Sweep Pad v0.4.0: single-character backtrack slips decode correctly (decode_auto), word floor 1000. / 滑行輸入板 v0.4.0：單字回頭滑行也能正確解碼（decode_auto），詞頻下限 1000。
 - **v0.4.1** — Sweep Pad v0.3.0: tolerance for backtracks. / 滑行輸入板 v0.3.0：容許回頭滑行。

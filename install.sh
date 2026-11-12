@@ -21,7 +21,7 @@ main() {
 REF="${CJF_REF:-v0.5.1}"
 MAIN_REPO="githubhjs/cangjie-fluency"
 PAD_REPO="githubhjs/cangjie-fuzzy-core"
-PAD_REF="${CJF_PAD_REF:-v0.4.1}"
+PAD_REF="${CJF_PAD_REF:-v0.5.0}"
 GRAM_NAME="zh-hant-t-essay-bgw.gram"
 GRAM_SIZE=41415724
 GRAM_SHA="0488ebd6688f900a39200f2b794f2f99bcbf1e8fc27280ae4a2324b08b1559c1"
@@ -74,7 +74,7 @@ Usage: install.sh [options]
                                       normal (default) = also the diagonal neighbours, wide = one more ring
   --no-sweep                          do not install the Cangjie Sweep Pad (tkinter gesture input helper)
   --pad-ref REF                       release tag of githubhjs/cangjie-fuzzy-core to download
-                                      the Sweep Pad from (default: v0.4.1, env CJF_PAD_REF)
+                                      the Sweep Pad from (default: v0.5.0, env CJF_PAD_REF)
   --no-deploy                         copy files only, do not restart/redeploy the input method
   --dry-run                           say what would be done, change nothing, download nothing
   --uninstall                         remove the files this installer created (backups are kept)
@@ -103,7 +103,7 @@ EOF
                                       normal（預設）= 再加斜向相鄰，wide = 再多一圈
   --no-sweep                          不安裝倉頡滑行輸入板（tkinter 筆畫/滑行輸入輔助工具）
   --pad-ref REF                       從 githubhjs/cangjie-fuzzy-core 下載滑行板時使用的
-                                      標籤/版本（預設：v0.4.1，環境變數 CJF_PAD_REF）
+                                      標籤/版本（預設：v0.5.0，環境變數 CJF_PAD_REF）
   --no-deploy                         只複製檔案，不重新啟動/重新部署輸入法
   --dry-run                           只說明會做什麼，不更動、不下載
   --uninstall                         移除本安裝程式建立的檔案（備份檔會保留）
@@ -437,6 +437,9 @@ if [ "$NO_DEPS" -eq 1 ]; then
   fi
 else
   install_deps
+fi
+if [ "$NO_SWEEP" -eq 0 ]; then
+  say "Sweep Pad optional '--mode commit' (types the clicked candidate) needs the same tools: xdotool (X11) or wl-clipboard + ydotool (Wayland)." "滑行板的選用 '--mode commit'（直接輸入點選的候選字）需要相同工具：xdotool（X11）或 wl-clipboard + ydotool（Wayland）。"
 fi
 
 if OCT="$(find_octagram)"; then

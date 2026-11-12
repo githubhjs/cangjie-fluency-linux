@@ -135,7 +135,7 @@ Options:
 | `--with-cangjie5` | also install `cangjie5_fluency` (+ the 5th-generation table from the main repo's `tables/`) |
 | `--no-model` | skip the 41 MB language model |
 | `--no-sweep` | do not install the Cangjie Sweep Pad (installed by default) |
-| `--pad-ref REF` | release tag of githubhjs/cangjie-fuzzy-core to download the pad from (default `v0.1.0`) |
+| `--pad-ref REF` | release tag of githubhjs/cangjie-fuzzy-core to download the pad from (default `v0.4.1`) |
 | `--no-deploy` | copy files only |
 | `--dry-run` | print what would happen, change and download nothing |
 | `--uninstall` | remove only the files this installer created (it keeps a manifest); backups are kept |
@@ -495,6 +495,7 @@ The Cangjie Sweep Pad is installed by default (a release asset of [githubhjs/can
 
 ## Changelog / 更新紀錄
 
+- **v0.4.3** — Sweep Pad v0.4.1: candidate row no longer resizes, the sweep trail stays visible. / 滑行輸入板 v0.4.1：候選列不再變高，滑行軌跡不會消失。
 - **v0.4.2** — Sweep Pad v0.4.0: single-character backtrack slips decode correctly (decode_auto), word floor 1000. / 滑行輸入板 v0.4.0：單字回頭滑行也能正確解碼（decode_auto），詞頻下限 1000。
 - **v0.4.1** — Sweep Pad v0.3.0: tolerance for backtracks. / 滑行輸入板 v0.3.0：容許回頭滑行。
 - **v0.4.0** — Sweep Pad added; default on, `--no-sweep` to skip. / 新增倉頡滑行輸入板；預設安裝，加 `--no-sweep` 可略過。

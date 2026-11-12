@@ -295,8 +295,8 @@ rm -f "$STUB/curl" "$STUB/wget" "$STUB/apt-get" "$STUB/sudo"
 
 # ================================================================== sweep pad: hash mismatch & offline
 FAKE_PAD="$T/fake_pad_rel"; mkdir -p "$FAKE_PAD"
-echo "corrupt data" > "$FAKE_PAD/cangjie-sweep-pad-v0.4.0.zip"
-echo "0000000000000000000000000000000000000000000000000000000000000000  cangjie-sweep-pad-v0.4.0.zip" > "$FAKE_PAD/cangjie-sweep-pad-v0.4.0.zip.sha256"
+echo "corrupt data" > "$FAKE_PAD/cangjie-sweep-pad-v0.4.1.zip"
+echo "0000000000000000000000000000000000000000000000000000000000000000  cangjie-sweep-pad-v0.4.1.zip" > "$FAKE_PAD/cangjie-sweep-pad-v0.4.1.zip.sha256"
 d="$T/bad_pad_hash"
 CJF_PAD_URL_BASE="$FAKE_PAD" env -u CJF_SRC_DIR -u RIME_DIR PATH="$STUB:$PATH" \
   bash "$INSTALL" --frontend fcitx5 --rime-dir "$d" --no-deps --no-model >"$T/out" 2>&1; rc=$?
